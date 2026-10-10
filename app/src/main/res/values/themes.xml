@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Lift On Way</string>
+
+    <color name="brand_green">#04BF68</color>
+
+    <!-- The window starts green, so the system splash and the animated splash read as one moment. -->
+    <style name="Theme.LiftOnWay" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/brand_green</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

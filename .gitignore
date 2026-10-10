@@ -1,0 +1,17 @@
+*.iml
+.gradle/
+.kotlin/
+/local.properties
+/.idea/
+.DS_Store
+build/
+/captures
+.externalNativeBuild
+.cxx
+# Secrets never go in Git: keys, keystores, Firebase config
+google-services.json
+*.jks
+*.keystore
+secrets.properties
+keystore.properties
+tools/lottie/preview.html
