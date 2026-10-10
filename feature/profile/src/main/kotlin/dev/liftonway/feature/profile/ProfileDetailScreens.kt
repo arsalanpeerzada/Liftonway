@@ -77,12 +77,14 @@ fun EditProfileRoute(onBack: () -> Unit, viewModel: EditProfileViewModel = hiltV
         LiftTopBar("Profile", onBack = onBack, align = TitleAlign.Center)
         Column(Modifier.fillMaxWidth().padding(horizontal = 46.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(Modifier.height(20.dp))
-            Box(Modifier.entrance(0).clip(CircleShape).clickable(role = Role.Button, onClickLabel = "Change photo") { picker.launch(pickImage) }) {
+            // Only the photo is clipped round, so the camera badge can sit over its edge as designed.
+            Box(Modifier.entrance(0)) {
                 AnimatedContent(viewModel.photoUri, transitionSpec = { (fadeIn() + scaleIn(initialScale = 0.9f)) togetherWith fadeOut() }, label = "photo") {
-                    ProfilePhoto(it, size = 92.dp)
+                    ProfilePhoto(it, Modifier.clip(CircleShape).clickable(role = Role.Button, onClickLabel = "Change photo") { picker.launch(pickImage) }, size = 92.dp)
                 }
                 Box(
-                    Modifier.align(Alignment.BottomEnd).offset(x = 8.dp).size(34.dp).clip(CircleShape).background(Color.White).border(1.dp, LiftColors.Hairline, CircleShape),
+                    Modifier.align(Alignment.BottomEnd).offset(x = 8.dp).size(34.dp).clip(CircleShape).background(Color.White).border(1.dp, LiftColors.Hairline, CircleShape)
+                        .clickable(role = Role.Button, onClickLabel = "Change photo") { picker.launch(pickImage) },
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(LiftIcons.Camera, null, tint = LiftColors.TextSecondary, modifier = Modifier.size(18.dp))

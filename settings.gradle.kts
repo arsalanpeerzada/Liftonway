@@ -20,6 +20,7 @@ rootProject.name = "LiftOnWay"
 
 include(
     ":app",
+    ":baselineprofile",
     ":core:model",
     ":core:data",
     ":core:designsystem",

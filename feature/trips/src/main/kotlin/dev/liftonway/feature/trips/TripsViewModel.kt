@@ -21,12 +21,12 @@ import javax.inject.Inject
 @HiltViewModel
 class TripsViewModel @Inject constructor(private val rides: RideRepository) : ViewModel() {
     val bookings: StateFlow<Map<TripStatus, List<Booking>>> = rides.bookings
-        .map { list -> list.groupBy { it.status } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), rides.bookings.value.groupBy { it.status })
+        .map { list -> list.sortedBy { it.ride.departure }.groupBy { it.status } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), rides.bookings.value.sortedBy { it.ride.departure }.groupBy { it.status })
 
     val published: StateFlow<Map<TripStatus, List<PublishedRide>>> = rides.published
-        .map { list -> list.groupBy { it.status } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), rides.published.value.groupBy { it.status })
+        .map { list -> list.sortedBy { it.ride.departure }.groupBy { it.status } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), rides.published.value.sortedBy { it.ride.departure }.groupBy { it.status })
 
     /** The booking whose cancel sheet is open. */
     var cancelling by mutableStateOf<Booking?>(null)

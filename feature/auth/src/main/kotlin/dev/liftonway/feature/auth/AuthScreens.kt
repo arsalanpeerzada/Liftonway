@@ -117,16 +117,18 @@ fun SignUpRoute(onBack: () -> Unit, onCodeSent: () -> Unit, viewModel: SignUpVie
     AuthScaffold(onBack) {
         Headline("Hello!\nSignup to\nget started")
         Spacer(Modifier.height(40.dp))
-        Box(
-            Modifier
-                .entrance(1)
-                .clip(CircleShape)
-                .clickable(role = Role.Button, onClickLabel = "Add a profile photo") {
-                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                },
-        ) {
-            ProfilePhoto(viewModel.photoUri, Modifier.sharedElement(PROFILE_PHOTO_KEY))
-            Box(Modifier.align(Alignment.BottomEnd).offset(x = 4.dp).size(28.dp).clip(CircleShape).background(Color.White), contentAlignment = Alignment.Center) {
+        val pickPhoto = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+        // Only the photo is clipped round, so the camera badge can sit over its edge as designed.
+        Box(Modifier.entrance(1)) {
+            ProfilePhoto(
+                viewModel.photoUri,
+                Modifier.sharedElement(PROFILE_PHOTO_KEY).clip(CircleShape).clickable(role = Role.Button, onClickLabel = "Add a profile photo", onClick = pickPhoto),
+            )
+            Box(
+                Modifier.align(Alignment.BottomEnd).offset(x = 6.dp, y = (-2).dp).size(30.dp).clip(CircleShape).background(Color.White)
+                    .clickable(role = Role.Button, onClickLabel = "Add a profile photo", onClick = pickPhoto),
+                contentAlignment = Alignment.Center,
+            ) {
                 Icon(LiftIcons.CameraAdd, null, tint = LiftColors.Ink, modifier = Modifier.size(20.dp))
             }
         }

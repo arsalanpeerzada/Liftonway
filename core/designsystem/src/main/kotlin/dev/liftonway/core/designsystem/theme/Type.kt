@@ -26,6 +26,9 @@ private fun style(size: Int, weight: FontWeight, line: Int, spacing: Double = 0.
     TextStyle(fontFamily = Jakarta, fontSize = size.sp, fontWeight = weight, lineHeight = line.sp, letterSpacing = spacing.em)
 
 val LiftTypography = Typography(
+    displayLarge = style(57, FontWeight.Normal, 64),
+    displayMedium = style(45, FontWeight.Normal, 52),
+    headlineLarge = style(32, FontWeight.Normal, 40),
     // "Hello! Sign in to get started", "Congratulations!"
     displaySmall = style(28, FontWeight.Medium, 34, -0.01),
     // "Let's travel together", "GOOD DAY, Siffat"

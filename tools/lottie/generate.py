@@ -7,8 +7,8 @@ Every animation is original vector work in the Lift On Way palette, so there is 
 import json
 import os
 
-from lottie_kit import (EASE, EASE_IN, EASE_OUT, LINEAR, Comp, anim, ellipse, fill, group, line, osc, path, rect,
-                        repeater, round_corners, shape, stroke, trim)
+from lottie_kit import (EASE, EASE_IN, EASE_OUT, LINEAR, Comp, anim, ellipse, fill, group, line, linear_fade, osc, path,
+                        rect, repeater, round_corners, shape, stroke, trim)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.normpath(os.path.join(HERE, "..", "..", "core", "designsystem", "src", "main", "res", "raw"))
@@ -123,13 +123,18 @@ def travel_car():
             shape("crown", [ellipse(28 if tall else 22, 40 if tall else 30, p=(0, -36 if tall else -30))],
                   [fill("#3FBF8A" if tall else "#2E9E6F")]),
         ])], p=scroll_left(x0, 214, 440, total, -20))
-    c.layer("ground", [shape("ground", [rect(400, 46, 0, p=(200, 237))], [fill(WHITE)]),
+    c.layer("ground", [shape("ground", [rect(440, 48, 0, p=(200, 238))], [fill(WHITE)]),
                        shape("road line", [line((0, 214), (400, 214))], [stroke(INK, 3)]),
                        shape("lane", [line((0, 228), (400, 228))],
                              [stroke("#D9DEE8", 3, cap=2, dash=(18, 16, anim([(0, 0), (total, 34 * 12)], LINEAR)))])])
     spin = anim([(0, 0), (total, 360 * 6)], LINEAR)
     c.layer("car", [group("car", car("#F7C873", "#E2AE4F", "#CFE3F7", spin=spin, passengers=True, luggage=True))],
             p=osc([200, 186], [0, -1.6], 40, total), s=(92, 92))
+    # Soft white edges, so trees and the road fade in and out instead of being cut off at the frame.
+    c.layer("edges", [
+        shape("left", [rect(70, 260, 0, p=(35, 130))], [linear_fade(WHITE, (0, 0), (70, 0), 1, 0)]),
+        shape("right", [rect(70, 260, 0, p=(365, 130))], [linear_fade(WHITE, (330, 0), (400, 0), 0, 1)]),
+    ])
     return c
 
 

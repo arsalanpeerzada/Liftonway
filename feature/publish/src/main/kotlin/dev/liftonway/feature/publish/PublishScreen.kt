@@ -81,6 +81,7 @@ fun PublishRideRoute(
     Column(Modifier.fillMaxSize().background(LiftColors.Canvas).imePadding()) {
         LiftTopBar("Publish a ride", Modifier.background(Color.White), onBack = onClose, navIcon = LiftIcons.Close)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Spacer(Modifier.height(4.dp))
             Section(Modifier.animateContentSize().entrance(0)) {
                 AddressInput(viewModel, viewModel.pickup, "Pickup Address")
                 Spacer(Modifier.height(12.dp))

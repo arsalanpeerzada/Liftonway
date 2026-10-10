@@ -148,3 +148,10 @@ class Comp:
     def save(self, folder):
         with open(f"{folder}/{self.name}.json", "w", encoding="utf-8") as f:
             json.dump(self.json(), f, separators=(",", ":"))
+
+
+def linear_fade(color, start, end, from_alpha, to_alpha):
+    """A linear gradient fill from `start` to `end` in one colour, fading opacity between the two alphas."""
+    r, g, b, _ = rgba(color)
+    return {"ty": "gf", "o": st(100), "r": 1, "t": 1, "s": st(list(start)), "e": st(list(end)),
+            "g": {"p": 2, "k": st([0, r, g, b, 1, r, g, b, 0, from_alpha, 1, to_alpha])}}

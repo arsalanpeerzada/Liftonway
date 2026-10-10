@@ -31,6 +31,33 @@ Kotlin, Jetpack Compose (Material 3), Navigation 3, Hilt, Coil 3, DataStore and 
 | `core:designsystem` | Theme, Plus Jakarta Sans, icons, motion helpers, Lottie player, shared components |
 | `feature:*` | onboarding, auth, home, findride, publish, trips, notifications, profile, wallet |
 | `app` | Navigation 3 shell, transitions, bottom tabs |
+| `baselineprofile` | Journeys that generate the baseline profile for release builds |
+
+## Tests
+
+```bash
+./gradlew :core:model:testDebugUnitTest :core:data:testDebugUnitTest :feature:trips:testDebugUnitTest
+```
+
+- `core:model`: the 4-hour cancellation rule at its boundaries, and PKR and date formatting.
+- `core:data`: search window, stops staying in the right cities, recommendations, a request being confirmed, cancelling, top-up, paying with too little credit, and saved cards keeping only the last four digits. These use a fixed clock and virtual time.
+- `feature:trips`: a Compose UI test, run on the JVM with Robolectric, that the cancel sheet blocks a ride leaving soon and allows one tomorrow.
+
+## Baseline profile
+
+The profile makes release builds start and scroll with pre-compiled code. With an emulator or device on API 33 or later connected:
+
+```bash
+./gradlew :app:generateBaselineProfile
+```
+
+This writes `app/src/release/generated/baselineProfiles/baseline-prof.txt`, which you should commit.
+
+**Two traps on Windows:**
+- **Path length:** the profile is pulled back into a long path under `baselineprofile/build`. If it passes 260 characters, the copy fails without failing the build, and no file appears. Turning on Windows long-path support, or keeping the project in a shorter folder, avoids this.
+- **Emulator storage:** each run reinstalls and recompiles the app several times. Give the emulator at least 1 GB free, or installs fail part-way through.
+
+**Release signing:** release builds are signed with the debug key so they install for testing. Replace that with a real upload key before any Play release.
 
 ## Animations
 

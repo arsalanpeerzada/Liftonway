@@ -66,14 +66,18 @@ class RideRepository @Inject constructor(
     suspend fun search(query: RideQuery): List<Ride> {
         delay(1400) // Long enough for the searching animation to read as work, short enough not to annoy.
         val days = ChronoUnit.DAYS.between(LocalDate.now(clock), query.date)
-        if (days !in 0..6 || query.pickup.id == query.destination.id) return emptyList()
+        if (days !in 0..SEARCH_WINDOW_DAYS || query.pickup.id == query.destination.id) return emptyList()
         return generate(query.pickup, query.destination, query.date, query.seats)
     }
 
-    /** The same route on the following days, for the "No rides available" page. */
+    /** The soonest rides on the same route on other days this week, one per driver, for the "No rides available" page. */
     fun recommended(query: RideQuery): List<Ride> {
-        val from = maxOf(LocalDate.now(clock), query.date.minusDays(1))
-        return (1L..3L).flatMap { generate(query.pickup, query.destination, from.plusDays(it), query.seats).take(1) }
+        val today = LocalDate.now(clock)
+        return (0L..SEARCH_WINDOW_DAYS)
+            .flatMap { generate(query.pickup, query.destination, today.plusDays(it), query.seats) }
+            .filter { it.departure.toLocalDate() != query.date }
+            .distinctBy { it.driver.id }
+            .take(3)
     }
 
     suspend fun request(ride: Ride, seats: Int): Booking {
@@ -121,7 +125,8 @@ class RideRepository @Inject constructor(
         val seed = (pickup.id + destination.id + date).hashCode().absoluteValue
         val now = now()
         val times = listOf(LocalTime.of(7, 0), LocalTime.of(8, 30), LocalTime.of(12, 15), LocalTime.of(17, 45), LocalTime.of(19, 30))
-        val stopCandidates = SampleData.places.filter { it.id != pickup.id && it.id != destination.id }
+        // Stops stay in the cities the ride runs between.
+        val stopCandidates = SampleData.places.filter { it.id != pickup.id && it.id != destination.id && it.area in setOf(pickup.area, destination.area) }
         return times.mapIndexedNotNull { i, time ->
             val departure = LocalDateTime.of(date, time)
             if (departure.isBefore(now.plusMinutes(30)) || (seed + i) % 4 == 3) return@mapIndexedNotNull null
@@ -136,7 +141,7 @@ class RideRepository @Inject constructor(
                     departure = departure,
                     pickup = pickup,
                     destination = destination,
-                    stops = if ((seed + i) % 2 == 0) listOf(stopCandidates[(seed + i) % stopCandidates.size]) else emptyList(),
+                    stops = if ((seed + i) % 2 == 0 && stopCandidates.isNotEmpty()) listOf(stopCandidates[(seed + i) % stopCandidates.size]) else emptyList(),
                     vehicleName = SampleData.vehicles[(seed + i * 7) % SampleData.vehicles.size],
                     totalSeats = totalSeats,
                     pricePerSeat = 350L + ((seed / 7 + i * 113) % 12) * 50L,
@@ -157,5 +162,10 @@ class RideRepository @Inject constructor(
             Booking("b2", ride("seed-2", SampleData.drivers[1], soon, "blue", "bahria", "Honda Civic", 600), 1, TripStatus.Upcoming, confirmed = true),
             Booking("b3", ride("seed-3", SampleData.drivers[2], LocalDateTime.of(today.minusDays(3), LocalTime.of(17, 45)), "g11", "airport", "Suzuki Cultus", 800), 2, TripStatus.Completed, confirmed = true),
         )
+    }
+
+    companion object {
+        /** Rides are published up to a week ahead; searches further out find nothing. */
+        const val SEARCH_WINDOW_DAYS = 6L
     }
 }

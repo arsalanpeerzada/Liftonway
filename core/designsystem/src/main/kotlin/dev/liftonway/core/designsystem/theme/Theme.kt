@@ -28,6 +28,8 @@ private val LiftColorScheme = lightColorScheme(
     outline = LiftColors.Ink,
     outlineVariant = LiftColors.Hairline,
     error = LiftColors.Coral,
+    // Snackbar actions sit on the dark snackbar.
+    inversePrimary = Color(0xFF6BE3A8),
 )
 
 object LiftShapes {

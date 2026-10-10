@@ -65,7 +65,7 @@ fun PrimaryButton(
             if (busy) {
                 LiftLottie(LiftAnimation.LoadingDots, Modifier.size(width = 72.dp, height = 24.dp))
             } else {
-                Text(text, style = MaterialTheme.typography.labelLarge, color = Color.White)
+                Text(text, style = if (height < 40.dp) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.labelLarge, color = Color.White)
             }
         }
     }

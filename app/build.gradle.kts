@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.baselineprofile)
 }
 
 android {
@@ -22,6 +23,9 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            // Prototype only: signed with the debug key so release builds (and baseline profile runs) install.
+            // Replace with a real upload key before any Play release.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
@@ -54,4 +58,8 @@ dependencies {
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+
+    // Installs the generated baseline profile so release builds start and scroll pre-compiled.
+    implementation(libs.androidx.profileinstaller)
+    baselineProfile(project(":baselineprofile"))
 }
