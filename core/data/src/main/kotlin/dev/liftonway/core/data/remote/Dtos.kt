@@ -1,6 +1,9 @@
 package dev.liftonway.core.data.remote
 
+import dev.liftonway.core.model.AppNotification
 import dev.liftonway.core.model.Booking
+import dev.liftonway.core.model.NotificationKind
+import dev.liftonway.core.model.Passenger
 import dev.liftonway.core.model.Person
 import dev.liftonway.core.model.Place
 import dev.liftonway.core.model.PublishedRide
@@ -41,10 +44,23 @@ data class RideDto(
 data class BookingDto(val id: String, val ride: RideDto, val seats: Int, val status: String, val tripStatus: String, val canCancel: Boolean)
 
 @Serializable
-data class PassengerDto(val bookingId: String, val name: String, val seats: Int, val status: String)
+data class PassengerDto(
+    val bookingId: String,
+    val passengerId: String,
+    val name: String,
+    val photoUrl: String? = null,
+    val seats: Int,
+    val status: String,
+)
 
 @Serializable
-data class PublishedRideDto(val ride: RideDto, val tripStatus: String, val passengers: List<PassengerDto>)
+data class PublishedRideDto(
+    val ride: RideDto,
+    val tripStatus: String,
+    val passengers: List<PassengerDto>,
+    val canCancel: Boolean = false,
+    val canComplete: Boolean = false,
+)
 
 @Serializable
 data class MeDto(val id: String, val name: String, val phone: String, val photoUrl: String? = null, val rating: Double? = null, val hasVehicle: Boolean)
@@ -105,9 +121,81 @@ internal fun tripStatus(value: String) = when (value) {
 
 internal fun BookingDto.toModel() = Booking(id, ride.toModel(), seats, tripStatus(tripStatus), confirmed = status == "CONFIRMED")
 
-internal fun PublishedRideDto.toModel() =
-    PublishedRide(ride.toModel(), tripStatus(tripStatus), passengers.map { Person(it.bookingId, it.name, rating = null) })
+internal fun PublishedRideDto.toModel() = PublishedRide(
+    ride.toModel(),
+    tripStatus(tripStatus),
+    passengers.map { Passenger(it.bookingId, Person(it.passengerId, it.name, rating = null, photoUri = it.photoUrl), it.seats, confirmed = it.status == "CONFIRMED") },
+    canCancel = canCancel,
+    canComplete = canComplete,
+)
 
 internal fun VehicleDto.toModel() = Vehicle(name, model, plate, colour, airConditioning, heater)
 
 internal fun Vehicle.toDto() = VehicleDto(name, model, plate, color, airConditioning, heater)
+
+@Serializable
+data class ActorDto(val id: String, val name: String, val photoUrl: String? = null)
+
+@Serializable
+data class RideBriefDto(val id: String, val from: String, val to: String, val departure: String)
+
+@Serializable
+data class NotificationDto(
+    val id: String,
+    val kind: String,
+    val actor: ActorDto? = null,
+    val ride: RideBriefDto? = null,
+    val bookingId: String? = null,
+    val seats: Int? = null,
+    val bookingStatus: String? = null,
+    val actionable: Boolean = false,
+    val read: Boolean = false,
+    val createdAt: String,
+)
+
+/** Place titles run long ("Blue Area, Jinnah Avenue"); messages use the part before the comma. */
+private fun String.short() = substringBefore(',').trim()
+
+/** Null for kinds this version of the app doesn't know yet. */
+internal fun NotificationDto.toModel(): AppNotification? {
+    val kind = when (kind) {
+        "RIDE_REQUEST" -> NotificationKind.RideRequest
+        "REQUEST_ACCEPTED" -> NotificationKind.RequestAccepted
+        "REQUEST_DECLINED" -> NotificationKind.RequestDeclined
+        "REQUEST_WITHDRAWN" -> NotificationKind.RequestWithdrawn
+        "RIDE_CANCELLED" -> NotificationKind.RideCancelled
+        "RIDE_COMPLETED" -> NotificationKind.RideCompleted
+        else -> return null
+    }
+    val trip = ride?.let { " from ${it.from.short()} to ${it.to.short()}" }.orEmpty()
+    val message = when (kind) {
+        NotificationKind.RideRequest -> if ((seats ?: 1) > 1) "wants $seats seats on your ride$trip" else "wants to have a ride with you$trip"
+        NotificationKind.RequestAccepted -> "accepted your request for the ride$trip"
+        NotificationKind.RequestDeclined -> "declined your request for the ride$trip"
+        NotificationKind.RequestWithdrawn -> "canceled their request for your ride$trip"
+        NotificationKind.RideCancelled -> "canceled the ride$trip"
+        else -> "completed the ride$trip"
+    }
+    // How an answered seat request ended, from the driver's side.
+    val outcome = if (kind == NotificationKind.RideRequest && !actionable) {
+        when (bookingStatus) {
+            "CONFIRMED" -> "Accepted"
+            "DECLINED" -> "Declined"
+            "CANCELLED" -> "Withdrawn"
+            else -> "Closed"
+        }
+    } else {
+        null
+    }
+    return AppNotification(
+        id = id,
+        kind = kind,
+        personName = actor?.name ?: "Someone",
+        message = message,
+        at = createdAt.toPakistanTime(),
+        actionable = actionable,
+        outcome = outcome,
+        bookingId = bookingId,
+        read = read,
+    )
+}

@@ -117,15 +117,15 @@ class RepositoriesTest {
     @Test
     fun `confirming a payment request needs enough credit`() = runTest {
         val wallet = WalletRepository(clock)
-        val notifications = NotificationRepository(clock, wallet)
+        val notifications = FakeNotificationRepository(clock, wallet)
         val request = notifications.items.value.first { it.kind == NotificationKind.PaymentRequest }
 
         assertEquals(AnswerResult.NotEnoughCredit, notifications.answer(request.id, accept = true))
-        assertFalse(notifications.items.value.first { it.id == request.id }.answered)
+        assertTrue(notifications.items.value.first { it.id == request.id }.actionable)
 
         wallet.topUp(1_000, wallet.wallet.value.cards.first().id)
         assertEquals(AnswerResult.Done, notifications.answer(request.id, accept = true))
-        assertTrue(notifications.items.value.first { it.id == request.id }.answered)
+        assertEquals("Paid", notifications.items.value.first { it.id == request.id }.outcome)
         assertEquals(1_000L - (request.amount ?: 0), wallet.wallet.value.balance)
     }
 }

@@ -1,6 +1,7 @@
 package dev.liftonway.core.data
 
 import dev.liftonway.core.data.remote.LiftApi
+import dev.liftonway.core.model.NotificationKind
 import dev.liftonway.core.model.Place
 import dev.liftonway.core.model.RideQuery
 import dev.liftonway.core.model.TripStatus
@@ -138,5 +139,61 @@ class RemoteApiTest {
         assertTrue(confirmed.confirmed)
         assertEquals(TripStatus.Upcoming, confirmed.status)
         assertEquals(TripStatus.Cancelled, declined.status)
+    }
+
+    @Test
+    fun `notifications map to messages, and answering a request goes through its booking`() = runTest {
+        val calls = mutableListOf<String>()
+        val api = LiftApi(FakeTokens(), MockEngine { request ->
+            calls += "${request.method.value} ${request.url.encodedPath}"
+            when {
+                request.url.encodedPath.endsWith("me/notifications") -> respond(
+                    """[{"id":"n1","kind":"RIDE_REQUEST","actor":{"id":"u2","name":"Asma Rider"},
+                        "ride":{"id":"r1","from":"Blue Area, Jinnah Avenue","to":"Islamabad International Airport","departure":"2026-10-20T03:00:00Z"},
+                        "bookingId":"b1","seats":2,"bookingStatus":"PENDING","actionable":true,"read":false,"createdAt":"2026-10-19T05:00:00Z"},
+                       {"id":"n2","kind":"RIDE_REQUEST","actor":{"id":"u3","name":"Omar Rider"},"bookingId":"b2","seats":1,
+                        "bookingStatus":"CANCELLED","actionable":false,"read":true,"createdAt":"2026-10-19T04:00:00Z"},
+                       {"id":"n3","kind":"SOMETHING_NEW","createdAt":"2026-10-19T03:00:00Z"}]""",
+                    HttpStatusCode.OK,
+                    json,
+                )
+                request.url.encodedPath.endsWith("me/rides") -> respond("[]", HttpStatusCode.OK, json)
+                else -> respond("""{"id":"b1"}""", HttpStatusCode.OK, json)
+            }
+        })
+        val notifications = RemoteNotificationRepository(api, RemoteRideRepository(api, Clock.systemUTC()), Clock.systemUTC())
+        notifications.refresh()
+
+        // Kinds from a newer server are skipped rather than shown wrongly.
+        val (request, withdrawn) = notifications.items.value
+        assertEquals(2, notifications.items.value.size)
+        assertEquals(NotificationKind.RideRequest, request.kind)
+        assertEquals("wants 2 seats on your ride from Blue Area to Islamabad International Airport", request.message)
+        assertTrue(request.actionable)
+        assertEquals("Withdrawn", withdrawn.outcome)
+
+        notifications.answer("n1", accept = true)
+        assertTrue(calls.toString(), "POST /api/v1/bookings/b1/accept" in calls)
+    }
+
+    @Test
+    fun `a published ride carries its passengers and what the driver may do`() = runTest {
+        val repository = rides { request ->
+            when (request.url.encodedPath.substringAfter("/api/v1/")) {
+                "me/rides" -> respond(
+                    """[{"ride":$rideJson,"tripStatus":"UPCOMING","canCancel":false,"canComplete":false,
+                         "passengers":[{"bookingId":"b1","passengerId":"u2","name":"Asma Rider","seats":1,"status":"CONFIRMED"},
+                                       {"bookingId":"b2","passengerId":"u3","name":"Omar Rider","seats":2,"status":"PENDING"}]}]""",
+                    HttpStatusCode.OK,
+                    json,
+                )
+                else -> respond("""{"status":409,"code":"CANCEL_WINDOW_CLOSED","detail":"Too late."}""", HttpStatusCode.Conflict, json)
+            }
+        }
+        repository.refreshPublished()
+        val ride = repository.published.value.single()
+        assertEquals(listOf("Omar Rider"), ride.waiting.map { it.person.name })
+        assertEquals(1, ride.seatsBooked)
+        assertEquals(CancelResult.TooLate, repository.cancelRide("r1"))
     }
 }

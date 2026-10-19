@@ -119,7 +119,7 @@ fun RequestedRidesRoute(onBack: () -> Unit, onBookRide: () -> Unit, viewModel: T
 }
 
 @Composable
-fun PublishedRidesRoute(onBack: () -> Unit, onPublish: () -> Unit, viewModel: TripsViewModel = hiltViewModel()) {
+fun PublishedRidesRoute(onBack: () -> Unit, onPublish: () -> Unit, onOpen: (String) -> Unit, viewModel: TripsViewModel = hiltViewModel()) {
     val groups by viewModel.published.collectAsStateWithLifecycle()
     TabbedTrips("Published rides", onBack) { status ->
         val list = groups[status].orEmpty()
@@ -133,11 +133,11 @@ fun PublishedRidesRoute(onBack: () -> Unit, onPublish: () -> Unit, viewModel: Tr
                 itemsIndexed(list, key = { _, it -> it.ride.id }) { i, item ->
                     RideCard(
                         item.ride,
-                        Modifier.animateItem().entrance(i.coerceAtMost(4)),
-                        dateTrailing = {
-                            val booked = item.passengers.size
-                            StatusBadge(if (booked == 0) "Open" else "$booked booked", if (booked == 0) LiftColors.Green else LiftColors.Blue)
-                        },
+                        Modifier
+                            .animateItem()
+                            .entrance(i.coerceAtMost(4))
+                            .clickable(role = Role.Button, onClickLabel = "Manage ride") { onOpen(item.ride.id) },
+                        dateTrailing = { StatusBadge(statusLabel(item), statusColor(item)) },
                     )
                 }
             }

@@ -26,7 +26,7 @@ fun interface CurrentPerson {
 
 /**
  * Real API or offline demo, chosen at build time (`-Pliftonway.fake=true` for the demo).
- * Notifications and the wallet stay in memory either way: the API doesn't cover them yet.
+ * The wallet stays in memory either way for now.
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -53,6 +53,11 @@ object DataModule {
     @Provides
     @Singleton
     fun rides(fake: Provider<FakeRideRepository>, remote: Provider<RemoteRideRepository>): RideRepository =
+        if (BuildConfig.USE_FAKE_BACKEND) fake.get() else remote.get()
+
+    @Provides
+    @Singleton
+    fun notifications(fake: Provider<FakeNotificationRepository>, remote: Provider<RemoteNotificationRepository>): NotificationRepository =
         if (BuildConfig.USE_FAKE_BACKEND) fake.get() else remote.get()
 
     @Provides

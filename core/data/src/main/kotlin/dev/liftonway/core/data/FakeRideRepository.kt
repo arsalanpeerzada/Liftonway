@@ -1,6 +1,7 @@
 package dev.liftonway.core.data
 
 import dev.liftonway.core.model.Booking
+import dev.liftonway.core.model.Passenger
 import dev.liftonway.core.model.Person
 import dev.liftonway.core.model.Place
 import dev.liftonway.core.model.Policy
@@ -115,14 +116,59 @@ class FakeRideRepository @Inject constructor(
             pricePerSeat = pricePerSeat,
             route = draft.route,
         )
-        val published = PublishedRide(ride, TripStatus.Upcoming, passengers = emptyList())
+        val published = PublishedRide(ride, TripStatus.Upcoming, passengers = emptyList(), canCancel = true)
         _published.update { listOf(published) + it }
+        // Someone asks for a seat shortly after, so the driver side has something to answer.
+        scope.launch {
+            delay(5000)
+            val rider = SampleData.drivers.last()
+            updatePublished(ride.id) { it.copy(passengers = it.passengers + Passenger("req-${ride.id}", rider, seats = 1, confirmed = false)) }
+        }
         return published
+    }
+
+    override suspend fun answer(bookingId: String, accept: Boolean) {
+        delay(600)
+        _published.update { list ->
+            list.map { p ->
+                p.copy(passengers = p.passengers.mapNotNull { if (it.bookingId != bookingId) it else if (accept) it.copy(confirmed = true) else null })
+            }
+        }
+    }
+
+    override suspend fun cancelRide(rideId: String): CancelResult {
+        val ride = _published.value.first { it.ride.id == rideId }
+        if (ride.passengers.any { it.confirmed } && !Policy.canCancel(ride.ride.departure, now())) return CancelResult.TooLate
+        delay(700)
+        updatePublished(rideId) { it.copy(status = TripStatus.Cancelled, canCancel = false, canComplete = false) }
+        return CancelResult.Cancelled
+    }
+
+    override suspend fun completeRide(rideId: String) {
+        delay(700)
+        updatePublished(rideId) { it.copy(status = TripStatus.Completed, passengers = it.passengers.filter { p -> p.confirmed }, canCancel = false, canComplete = false) }
+    }
+
+    private fun updatePublished(rideId: String, change: (PublishedRide) -> PublishedRide) {
+        _published.update { list -> list.map { if (it.ride.id == rideId) change(it) else it } }
     }
 
     override suspend fun refreshBookings() = Unit
 
-    override suspend fun refreshPublished() = Unit
+    /** Rides that have set off can be completed; the cancel rule is re-checked against the clock. */
+    override suspend fun refreshPublished() {
+        val now = now()
+        _published.update { list ->
+            list.map {
+                if (it.status != TripStatus.Upcoming) return@map it
+                val departed = !it.ride.departure.isAfter(now)
+                it.copy(
+                    canComplete = departed,
+                    canCancel = !departed && (it.passengers.none { p -> p.confirmed } || Policy.canCancel(it.ride.departure, now)),
+                )
+            }
+        }
+    }
 
     private fun generate(pickup: Place, destination: Place, date: LocalDate, seats: Int): List<Ride> {
         val seed = (pickup.id + destination.id + date).hashCode().absoluteValue

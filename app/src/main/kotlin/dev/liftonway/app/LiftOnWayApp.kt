@@ -33,7 +33,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
@@ -67,6 +70,7 @@ import dev.liftonway.feature.profile.ProfileRoute
 import dev.liftonway.feature.profile.VehicleRoute
 import dev.liftonway.feature.publish.PublishRideRoute
 import dev.liftonway.feature.trips.MyTripsRoute
+import dev.liftonway.feature.trips.PublishedRideRoute
 import dev.liftonway.feature.trips.PublishedRidesRoute
 import dev.liftonway.feature.trips.RequestedRidesRoute
 import dev.liftonway.feature.wallet.TransactionHistoryRoute
@@ -87,6 +91,7 @@ data class StopsKey(val rideId: String) : Destination
 data object PublishKey : Destination
 data object RequestedKey : Destination
 data object PublishedKey : Destination
+data class PublishedRideKey(val rideId: String) : Destination
 data object EditProfileKey : Destination
 data object ChangeNumberKey : Destination
 data object VehicleKey : Destination
@@ -131,6 +136,12 @@ fun LiftOnWayApp(app: AppViewModel = hiltViewModel()) {
     // The server stopped accepting the token: go back to sign-in rather than failing every call.
     LaunchedEffect(session?.signedIn) {
         if (session?.signedIn == false && backStack.contains(MainKey)) reset(AuthChoiceKey)
+    }
+
+    // New requests and answers arrive while the app is open; nothing runs once it's in the background.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(session?.signedIn) {
+        if (session?.signedIn == true) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { app.keepNotificationsFresh() }
     }
 
     Box(Modifier.fillMaxSize().background(Color.White)) {
@@ -217,8 +228,15 @@ fun LiftOnWayApp(app: AppViewModel = hiltViewModel()) {
                                 Animated { RequestedRidesRoute(onBack = { pop() }, onBookRide = { backStack[backStack.lastIndex] = FindRideKey }) }
                             }
                             entry<PublishedKey> {
-                                Animated { PublishedRidesRoute(onBack = { pop() }, onPublish = { backStack[backStack.lastIndex] = PublishKey }) }
+                                Animated {
+                                    PublishedRidesRoute(
+                                        onBack = { pop() },
+                                        onPublish = { backStack[backStack.lastIndex] = PublishKey },
+                                        onOpen = { push(PublishedRideKey(it)) },
+                                    )
+                                }
                             }
+                            entry<PublishedRideKey> { key -> Animated { PublishedRideRoute(key.rideId, onBack = { pop() }) } }
                             entry<EditProfileKey> { Animated { EditProfileRoute(onBack = { pop() }) } }
                             entry<ChangeNumberKey> { Animated { ChangeNumberRoute(onBack = { pop() }, onCodeSent = { push(OtpKey) }) } }
                             entry<VehicleKey> { Animated { VehicleRoute(onBack = { pop() }) } }

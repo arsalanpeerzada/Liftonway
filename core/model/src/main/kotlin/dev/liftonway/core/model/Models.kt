@@ -55,9 +55,25 @@ enum class TripStatus { Upcoming, Completed, Cancelled }
 @Immutable
 data class Booking(val id: String, val ride: Ride, val seats: Int, val status: TripStatus, val confirmed: Boolean)
 
-/** A ride the user published as the driver. */
+/** Someone holding or asking for a seat on the user's ride. */
 @Immutable
-data class PublishedRide(val ride: Ride, val status: TripStatus, val passengers: List<Person>)
+data class Passenger(val bookingId: String, val person: Person, val seats: Int, val confirmed: Boolean)
+
+/**
+ * A ride the user published as the driver, with pending and confirmed passengers.
+ * [canCancel] and [canComplete] mirror what the server would accept right now.
+ */
+@Immutable
+data class PublishedRide(
+    val ride: Ride,
+    val status: TripStatus,
+    val passengers: List<Passenger>,
+    val canCancel: Boolean = false,
+    val canComplete: Boolean = false,
+) {
+    val waiting: List<Passenger> get() = passengers.filterNot { it.confirmed }
+    val seatsBooked: Int get() = passengers.filter { it.confirmed }.sumOf { it.seats }
+}
 
 @Immutable
 data class RideQuery(val pickup: Place, val destination: Place, val date: LocalDate, val seats: Int)
@@ -78,8 +94,22 @@ data class UserProfile(val name: String, val countryCode: String, val phone: Str
     val displayPhone: String get() = "$countryCode $phone"
 }
 
-enum class NotificationKind { RideRequest, PaymentRequest, PaymentSent, PaymentReceived }
+enum class NotificationKind {
+    RideRequest,
+    RequestAccepted,
+    RequestDeclined,
+    RequestWithdrawn,
+    RideCancelled,
+    RideCompleted,
+    PaymentRequest,
+    PaymentSent,
+    PaymentReceived,
+}
 
+/**
+ * One entry in the notifications list. [actionable] means it is waiting for this user's yes or no;
+ * once answered, [outcome] says how it ended ("Accepted", "Paid", ...).
+ */
 @Immutable
 data class AppNotification(
     val id: String,
@@ -88,7 +118,10 @@ data class AppNotification(
     val message: String,
     val at: LocalDateTime,
     val amount: Rupees? = null,
-    val answered: Boolean = false,
+    val actionable: Boolean = false,
+    val outcome: String? = null,
+    val bookingId: String? = null,
+    val read: Boolean = false,
 )
 
 enum class CardBrand { Mastercard, Visa }

@@ -33,6 +33,15 @@ interface RideRepository {
     suspend fun request(ride: Ride, seats: Int): Booking
     suspend fun cancel(bookingId: String): CancelResult
     suspend fun publish(draft: RideDraft, pricePerSeat: Long): PublishedRide
+
+    /** As the driver: say yes or no to a seat request. */
+    suspend fun answer(bookingId: String, accept: Boolean)
+
+    /** As the driver: call the ride off. [CancelResult.TooLate] once confirmed passengers are inside the 4-hour window. */
+    suspend fun cancelRide(rideId: String): CancelResult
+
+    /** As the driver: mark a ride that has set off as done. */
+    suspend fun completeRide(rideId: String)
     suspend fun refreshBookings()
     suspend fun refreshPublished()
 }

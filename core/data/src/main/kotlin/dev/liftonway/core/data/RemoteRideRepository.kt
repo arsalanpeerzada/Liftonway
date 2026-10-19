@@ -110,6 +110,36 @@ class RemoteRideRepository @Inject constructor(private val api: LiftApi, private
         return _published.value.firstOrNull { it.ride.id == ride.id } ?: PublishedRide(ride, TripStatus.Upcoming, emptyList())
     }
 
+    override suspend fun answer(bookingId: String, accept: Boolean) {
+        api.exec {
+            method = HttpMethod.Post
+            url("bookings/$bookingId/${if (accept) "accept" else "decline"}")
+        }
+        refreshPublished()
+    }
+
+    override suspend fun cancelRide(rideId: String): CancelResult {
+        try {
+            api.exec {
+                method = HttpMethod.Post
+                url("rides/$rideId/cancel")
+            }
+        } catch (e: ApiError) {
+            if (e.code == "CANCEL_WINDOW_CLOSED") return CancelResult.TooLate
+            throw e
+        }
+        refreshPublished()
+        return CancelResult.Cancelled
+    }
+
+    override suspend fun completeRide(rideId: String) {
+        api.exec {
+            method = HttpMethod.Post
+            url("rides/$rideId/complete")
+        }
+        refreshPublished()
+    }
+
     override suspend fun refreshBookings() {
         _bookings.value = api.call<List<BookingDto>> { url("me/bookings") }.map { it.toModel() }
     }

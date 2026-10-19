@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -36,6 +37,7 @@ import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,6 +49,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -58,6 +62,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.liftonway.core.data.AnswerResult
+import dev.liftonway.core.data.ApiError
 import dev.liftonway.core.data.NotificationRepository
 import dev.liftonway.core.designsystem.animation.LiftAnimation
 import dev.liftonway.core.designsystem.component.ConfirmSheetContent
@@ -85,6 +90,32 @@ class NotificationsViewModel @Inject constructor(private val repository: Notific
     val busy = mutableStateMapOf<String, Boolean>()
     var asking by mutableStateOf<AppNotification?>(null)
 
+    /** Set when the list couldn't be loaded; shown when there's nothing else to show. */
+    var failure by mutableStateOf<String?>(null)
+        private set
+
+    /** Unread when the screen opened; they keep their dot until the user leaves. */
+    val fresh = mutableStateListOf<String>()
+
+    /** Runs each time the tab is shown. */
+    fun load() {
+        viewModelScope.launch {
+            fresh.clear()
+            failure = try {
+                repository.refresh()
+                null
+            } catch (e: ApiError) {
+                e.message
+            }
+            fresh.addAll(items.value.filter { !it.read }.map { it.id })
+            try {
+                repository.markAllRead()
+            } catch (_: ApiError) {
+                // Harmless: they're marked next time.
+            }
+        }
+    }
+
     fun ago(item: AppNotification): String {
         val d = Duration.between(item.at, repository.now())
         return when {
@@ -95,17 +126,29 @@ class NotificationsViewModel @Inject constructor(private val repository: Notific
         }
     }
 
-    fun answer(item: AppNotification, accept: Boolean, onNoCredit: () -> Unit) {
+    fun answer(item: AppNotification, accept: Boolean, onNoCredit: () -> Unit, onError: (String) -> Unit) {
         if (busy[item.id] == true) return
         viewModelScope.launch {
             busy[item.id] = true
-            val result = repository.answer(item.id, accept)
-            busy.remove(item.id)
-            if (result == AnswerResult.NotEnoughCredit) onNoCredit()
+            try {
+                if (repository.answer(item.id, accept) == AnswerResult.NotEnoughCredit) onNoCredit()
+            } catch (e: ApiError) {
+                onError(e.message)
+            } finally {
+                busy.remove(item.id)
+            }
         }
     }
 
-    fun remove(item: AppNotification) = repository.remove(item.id)
+    fun remove(item: AppNotification, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                repository.remove(item.id)
+            } catch (e: ApiError) {
+                onError(e.message)
+            }
+        }
+    }
 }
 
 @Composable
@@ -118,25 +161,33 @@ fun NotificationsRoute(onBack: () -> Unit, onOpenWallet: () -> Unit, contentPadd
             if (snackbar.showSnackbar("Not enough credit in your wallet", actionLabel = "Top up") == SnackbarResult.ActionPerformed) onOpenWallet()
         }
     }
+    val showError: (String) -> Unit = { message -> scope.launch { snackbar.showSnackbar(message) } }
+    LaunchedEffect(Unit) { viewModel.load() }
 
     Box(Modifier.fillMaxSize().background(LiftColors.Canvas).padding(contentPadding)) {
         Column(Modifier.fillMaxSize()) {
             LiftTopBar("Notifications", Modifier.background(Color.White), onBack = onBack, align = TitleAlign.Center)
-            if (items.isEmpty()) {
+            val failure = viewModel.failure
+            if (items.isEmpty() && failure != null) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    EmptyState(failure, Modifier.padding(bottom = 80.dp), action = "Try again", onAction = viewModel::load)
+                }
+            } else if (items.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     EmptyState("You’re all caught up", Modifier.padding(bottom = 80.dp), animation = LiftAnimation.Bell)
                 }
             } else {
                 LazyColumn(contentPadding = PaddingValues(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     itemsIndexed(items, key = { _, it -> it.id }) { i, item ->
-                        SwipeAway(onRemove = { viewModel.remove(item) }, modifier = Modifier.animateItem().entrance(i.coerceAtMost(5))) {
+                        SwipeAway(onRemove = { viewModel.remove(item, showError) }, modifier = Modifier.animateItem().entrance(i.coerceAtMost(5))) {
                             NotificationCard(
                                 item,
                                 viewModel.ago(item),
+                                fresh = item.id in viewModel.fresh,
                                 busy = viewModel.busy[item.id] == true,
-                                onAnswer = { accept -> viewModel.answer(item, accept, noCredit) },
-                                onOpen = { if (item.kind == NotificationKind.RideRequest && !item.answered) viewModel.asking = item },
-                                onDelete = { viewModel.remove(item) },
+                                onAnswer = { accept -> viewModel.answer(item, accept, noCredit, showError) },
+                                onOpen = { if (item.kind == NotificationKind.RideRequest && item.actionable) viewModel.asking = item },
+                                onDelete = { viewModel.remove(item, showError) },
                             )
                         }
                     }
@@ -150,15 +201,15 @@ fun NotificationsRoute(onBack: () -> Unit, onOpenWallet: () -> Unit, contentPadd
         LiftSheet({ viewModel.asking = null }) { dismiss ->
             ConfirmSheetContent(
                 title = "Request for a ride",
-                message = "${item.personName} wants to have a ride with you\n${item.at.notificationStamp()}",
+                message = "${item.personName} ${item.message}\n${item.at.notificationStamp()}",
                 primary = "Yes",
                 onPrimary = {
-                    viewModel.answer(item, true, noCredit)
+                    viewModel.answer(item, true, noCredit, showError)
                     dismiss()
                 },
                 secondary = "No",
                 onSecondary = {
-                    viewModel.answer(item, false, noCredit)
+                    viewModel.answer(item, false, noCredit, showError)
                     dismiss()
                 },
                 centred = true,
@@ -190,6 +241,11 @@ private data class Look(val icon: ImageVector, val tint: Color, val bg: Color, v
 
 private fun look(kind: NotificationKind) = when (kind) {
     NotificationKind.RideRequest -> Look(LiftIcons.Check, LiftColors.Blue, LiftColors.BlueSoft, "Request for a ride", LiftColors.Blue)
+    NotificationKind.RequestAccepted -> Look(LiftIcons.Check, LiftColors.Green, LiftColors.GreenSoft, "Request accepted", LiftColors.Green)
+    NotificationKind.RequestDeclined -> Look(LiftIcons.Close, LiftColors.Coral, LiftColors.RedSoft, "Request declined", LiftColors.Coral)
+    NotificationKind.RequestWithdrawn -> Look(LiftIcons.Close, LiftColors.Amber, LiftColors.AmberSoft, "Request canceled", LiftColors.Amber)
+    NotificationKind.RideCancelled -> Look(LiftIcons.Alert, LiftColors.Coral, LiftColors.RedSoft, "Ride canceled", LiftColors.Coral)
+    NotificationKind.RideCompleted -> Look(LiftIcons.Car, LiftColors.Blue, LiftColors.BlueSoft, "Ride completed", LiftColors.Blue)
     NotificationKind.PaymentRequest -> Look(LiftIcons.Card, LiftColors.Amber, LiftColors.AmberSoft, "Payment confirmation", LiftColors.Amber)
     NotificationKind.PaymentSent -> Look(LiftIcons.ArrowUpLeft, LiftColors.Coral, LiftColors.RedSoft, "Payment done", LiftColors.Coral)
     NotificationKind.PaymentReceived -> Look(LiftIcons.ArrowDownRight, LiftColors.Green, LiftColors.GreenSoft, "Payment received", LiftColors.Green)
@@ -199,6 +255,7 @@ private fun look(kind: NotificationKind) = when (kind) {
 private fun NotificationCard(
     item: AppNotification,
     ago: String,
+    fresh: Boolean,
     busy: Boolean,
     onAnswer: (Boolean) -> Unit,
     onOpen: () -> Unit,
@@ -214,7 +271,13 @@ private fun NotificationCard(
         }
         Spacer(Modifier.width(18.dp))
         Column(Modifier.weight(1f)) {
-            Text(look.title, style = MaterialTheme.typography.titleSmall)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(look.title, style = MaterialTheme.typography.titleSmall)
+                if (fresh) {
+                    Spacer(Modifier.width(8.dp))
+                    Box(Modifier.size(8.dp).clip(CircleShape).background(LiftColors.Green).semantics { contentDescription = "New" })
+                }
+            }
             Spacer(Modifier.height(2.dp))
             Text(
                 buildAnnotatedString {
@@ -225,18 +288,19 @@ private fun NotificationCard(
             )
             Text(item.at.notificationStamp(), style = MaterialTheme.typography.bodySmall)
             Text(ago, style = MaterialTheme.typography.bodySmall, color = LiftColors.Hint)
-            val actionable = item.kind == NotificationKind.RideRequest || item.kind == NotificationKind.PaymentRequest
-            if (actionable) {
+            if (item.actionable || item.outcome != null) {
                 AnimatedContent(
-                    item.answered,
+                    item.outcome,
                     transitionSpec = { fadeIn() togetherWith fadeOut() using SizeTransform() },
                     label = "answer",
-                ) { answered ->
-                    if (answered) {
+                ) { outcome ->
+                    if (outcome != null) {
+                        val positive = outcome == "Accepted" || outcome == "Paid"
+                        val tint = if (positive) LiftColors.Green else LiftColors.Hint
                         Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(LiftIcons.Check, null, tint = LiftColors.Green, modifier = Modifier.size(16.dp))
+                            Icon(if (positive) LiftIcons.Check else LiftIcons.Close, null, tint = tint, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Answered", style = MaterialTheme.typography.bodySmall, color = LiftColors.Green)
+                            Text(outcome, style = MaterialTheme.typography.bodySmall, color = tint)
                         }
                     } else {
                         Row(Modifier.padding(top = 12.dp, end = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
