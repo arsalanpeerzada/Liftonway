@@ -70,7 +70,10 @@ fun RequestedRidesRoute(onBack: () -> Unit, onBookRide: () -> Unit, viewModel: T
     val groups by viewModel.bookings.collectAsStateWithLifecycle()
     TabbedTrips("Requested rides", onBack) { status ->
         val list = groups[status].orEmpty()
-        if (list.isEmpty()) {
+        val failure = viewModel.loadFailure
+        if (failure != null && list.isEmpty()) {
+            Empty(failure, "Try again", viewModel::refresh)
+        } else if (list.isEmpty()) {
             Empty("You have not ${emptyVerb(status)} a ride yet!!", "Book a ride", onBookRide)
         } else {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 10.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -99,7 +102,7 @@ fun RequestedRidesRoute(onBack: () -> Unit, onBookRide: () -> Unit, viewModel: T
         LiftSheet(onDismiss = viewModel::dismissCancel) { dismiss ->
             ConfirmSheetContent(
                 title = "Are you sure you want to cancel?",
-                message = if (allowed) {
+                message = viewModel.cancelFailure ?: if (allowed) {
                     "You can cancel until ${Policy.CancelCutoff.toHours()} hours before departure."
                 } else {
                     "Ride can only be canceled before ${Policy.CancelCutoff.toHours()} hours."
@@ -120,7 +123,10 @@ fun PublishedRidesRoute(onBack: () -> Unit, onPublish: () -> Unit, viewModel: Tr
     val groups by viewModel.published.collectAsStateWithLifecycle()
     TabbedTrips("Published rides", onBack) { status ->
         val list = groups[status].orEmpty()
-        if (list.isEmpty()) {
+        val failure = viewModel.loadFailure
+        if (failure != null && list.isEmpty()) {
+            Empty(failure, "Try again", viewModel::refresh)
+        } else if (list.isEmpty()) {
             Empty("You have not ${if (status == TripStatus.Upcoming) "published" else emptyVerb(status)} a ride yet!!", "Publish a ride", onPublish)
         } else {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 10.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

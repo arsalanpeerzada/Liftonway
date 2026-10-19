@@ -29,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -138,6 +139,15 @@ fun PublishRideRoute(
                 Modifier.fillMaxWidth().padding(horizontal = 28.dp).entrance(5),
                 loading = viewModel.publishing,
             )
+            AnimatedVisibility(viewModel.failure != null) {
+                Text(
+                    viewModel.failure.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = LiftColors.Coral,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp),
+                )
+            }
             Spacer(Modifier.height(28.dp).navigationBarsPadding())
         }
     }
@@ -170,6 +180,7 @@ fun PublishRideRoute(
 private fun AddressInput(viewModel: PublishViewModel, field: AddressField, placeholder: String) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    LaunchedEffect(focused) { if (focused) viewModel.lookUp(field) }
     Column {
         LiftTextField(
             field.text,
@@ -181,7 +192,7 @@ private fun AddressInput(viewModel: PublishViewModel, field: AddressField, place
             interactionSource = interaction,
         )
         AnimatedVisibility(focused && field.place == null, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-            PlaceSuggestions(viewModel.suggestions(field)) { viewModel.choose(field, it) }
+            PlaceSuggestions(field.suggestions) { viewModel.choose(field, it) }
         }
     }
 }

@@ -103,6 +103,7 @@ fun EditProfileRoute(onBack: () -> Unit, viewModel: EditProfileViewModel = hiltV
             )
             Spacer(Modifier.height(24.dp))
             PrimaryButton("Update", { viewModel.save(onBack) }, Modifier.fillMaxWidth().entrance(2), enabled = viewModel.name.isNotBlank(), loading = viewModel.saving)
+            FailureText(viewModel.failure)
         }
     }
 }
@@ -180,6 +181,7 @@ fun VehicleRoute(onBack: () -> Unit, viewModel: VehicleViewModel = hiltViewModel
                 enabled = editing,
                 loading = viewModel.saving,
             )
+            FailureText(viewModel.failure)
             Spacer(Modifier.height(24.dp).navigationBarsPadding())
         }
     }
@@ -256,6 +258,19 @@ private fun Check(label: String, checked: Boolean, enabled: Boolean, onChange: (
         }
         Spacer(Modifier.width(8.dp))
         Text(label, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun FailureText(message: String?) {
+    AnimatedVisibility(message != null) {
+        Text(
+            message.orEmpty(),
+            style = MaterialTheme.typography.bodySmall,
+            color = LiftColors.Coral,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        )
     }
 }
 

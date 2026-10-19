@@ -2,6 +2,7 @@ package dev.liftonway.core.data
 
 import dev.liftonway.core.model.CardBrand
 import dev.liftonway.core.model.NotificationKind
+import dev.liftonway.core.model.Person
 import dev.liftonway.core.model.RideQuery
 import dev.liftonway.core.model.TransactionType
 import dev.liftonway.core.model.TripStatus
@@ -25,15 +26,15 @@ class RepositoriesTest {
     private val clock = Clock.fixed(Instant.parse("2026-10-10T09:00:00Z"), ZoneOffset.UTC)
     private val today = LocalDate.of(2026, 10, 10)
 
-    private fun TestScope.rides() = RideRepository(clock, backgroundScope)
-    private fun query(rides: RideRepository, date: LocalDate = today.plusDays(1), from: String = "f7", to: String = "saddar") =
+    private fun TestScope.rides() = FakeRideRepository(clock, backgroundScope, FakeVehicleRepository(), CurrentPerson { Person("me", "Test", null) })
+    private fun query(rides: FakeRideRepository, date: LocalDate = today.plusDays(1), from: String = "f7", to: String = "saddar") =
         RideQuery(rides.place(from), rides.place(to), date, seats = 1)
 
     @Test
     fun `search finds rides inside the week and none beyond it`() = runTest {
         val rides = rides()
         assertTrue(rides.search(query(rides)).isNotEmpty())
-        assertTrue(rides.search(query(rides, date = today.plusDays(RideRepository.SEARCH_WINDOW_DAYS + 1))).isEmpty())
+        assertTrue(rides.search(query(rides, date = today.plusDays(FakeRideRepository.SEARCH_WINDOW_DAYS + 1))).isEmpty())
     }
 
     @Test
@@ -46,7 +47,7 @@ class RepositoriesTest {
     @Test
     fun `stops stay in the cities the ride runs between`() = runTest {
         val rides = rides()
-        (0L..RideRepository.SEARCH_WINDOW_DAYS).forEach { day ->
+        (0L..FakeRideRepository.SEARCH_WINDOW_DAYS).forEach { day ->
             rides.search(query(rides, date = today.plusDays(day), from = "blue", to = "bahria")).forEach { ride ->
                 assertTrue(ride.stops.all { it.area == "Islamabad" || it.area == "Rawalpindi" })
             }

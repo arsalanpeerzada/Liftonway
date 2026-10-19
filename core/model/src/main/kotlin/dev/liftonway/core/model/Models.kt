@@ -12,8 +12,9 @@ data class Place(val id: String, val title: String, val area: String) {
     val label: String get() = "$title, $area"
 }
 
+/** [rating] is null until someone has been rated. */
 @Immutable
-data class Person(val id: String, val name: String, val rating: Float, val photoUri: String? = null) {
+data class Person(val id: String, val name: String, val rating: Float?, val photoUri: String? = null) {
     val initials: String get() = name.split(' ').filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercase() }
 }
 

@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -115,6 +116,7 @@ private fun LocationInput(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val chosen = if (field == LocationField.Pickup) viewModel.pickup else viewModel.destination
+    LaunchedEffect(focused) { if (focused) viewModel.lookUp(field) }
     Column {
         LiftTextField(
             viewModel.text(field),

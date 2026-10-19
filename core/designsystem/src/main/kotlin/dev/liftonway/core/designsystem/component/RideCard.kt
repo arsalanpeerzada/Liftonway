@@ -80,7 +80,7 @@ fun RideCard(
 }
 
 @Composable
-fun DriverHeader(name: String, rating: Float, photoUri: String?, onOpen: (() -> Unit)?) {
+fun DriverHeader(name: String, rating: Float?, photoUri: String?, onOpen: (() -> Unit)?) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -94,7 +94,7 @@ fun DriverHeader(name: String, rating: Float, photoUri: String?, onOpen: (() -> 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(LiftIcons.Star, null, tint = LiftColors.Amber, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("(${"%.1f".format(Locale.UK, rating)})", style = MaterialTheme.typography.bodySmall, color = LiftColors.Hint)
+                Text(rating?.let { "(${"%.1f".format(Locale.UK, it)})" } ?: "(New)", style = MaterialTheme.typography.bodySmall, color = LiftColors.Hint)
             }
         }
         if (onOpen != null) Icon(LiftIcons.ChevronRight, null, tint = LiftColors.Divider, modifier = Modifier.size(20.dp))

@@ -7,12 +7,12 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.liftonway.core.data.ApiError
 import dev.liftonway.core.data.PhotoStore
 import dev.liftonway.core.data.SessionRepository
 import dev.liftonway.core.data.VehicleRepository
 import dev.liftonway.core.model.UserProfile
 import dev.liftonway.core.model.Vehicle
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -25,6 +25,11 @@ import javax.inject.Inject
 class ProfileViewModel @Inject constructor(private val session: SessionRepository, vehicles: VehicleRepository) : ViewModel() {
     val profile: StateFlow<UserProfile?> = session.session.map { it.profile }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val vehicle: StateFlow<Vehicle?> = vehicles.vehicle
+
+    init {
+        // The driver sections depend on having a vehicle, which lives on the server.
+        viewModelScope.launch { runCatching { vehicles.refresh() } }
+    }
 
     fun signOut(then: () -> Unit) {
         viewModelScope.launch {
@@ -42,6 +47,8 @@ class EditProfileViewModel @Inject constructor(private val session: SessionRepos
     var saving by mutableStateOf(false)
         private set
     var loaded by mutableStateOf(false)
+        private set
+    var failure by mutableStateOf<String?>(null)
         private set
 
     init {
@@ -62,10 +69,15 @@ class EditProfileViewModel @Inject constructor(private val session: SessionRepos
         if (name.isBlank() || saving) return
         viewModelScope.launch {
             saving = true
-            delay(600)
-            session.updateProfile(name, photoUri)
-            saving = false
-            then()
+            failure = null
+            try {
+                session.updateProfile(name, photoUri)
+                then()
+            } catch (e: ApiError) {
+                failure = e.message
+            } finally {
+                saving = false
+            }
         }
     }
 }
@@ -113,10 +125,14 @@ class ChangeNumberViewModel @Inject constructor(private val session: SessionRepo
                     return@launch
                 }
                 busy = true
-                delay(700)
-                session.startChangeNumber(profile.countryCode, number)
-                busy = false
-                onCodeSent()
+                try {
+                    session.startChangeNumber(profile.countryCode, number)
+                    onCodeSent()
+                } catch (e: ApiError) {
+                    error = e.message
+                } finally {
+                    busy = false
+                }
             }
         }
     }
@@ -142,6 +158,8 @@ class VehicleViewModel @Inject constructor(private val vehicles: VehicleReposito
         private set
     var saving by mutableStateOf(false)
         private set
+    var failure by mutableStateOf<String?>(null)
+        private set
 
     fun edit() {
         editing = true
@@ -158,9 +176,15 @@ class VehicleViewModel @Inject constructor(private val vehicles: VehicleReposito
         if (listOf(name, model, plate, color).any { it.isBlank() } || saving) return
         viewModelScope.launch {
             saving = true
-            vehicles.save(Vehicle(name.trim(), model.trim(), plate.trim().uppercase(), color.trim(), airConditioning, heater, photoUri))
-            saving = false
-            then()
+            failure = null
+            try {
+                vehicles.save(Vehicle(name.trim(), model.trim(), plate.trim().uppercase(), color.trim(), airConditioning, heater, photoUri))
+                then()
+            } catch (e: ApiError) {
+                failure = e.message
+            } finally {
+                saving = false
+            }
         }
     }
 }

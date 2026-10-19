@@ -2,14 +2,11 @@ package dev.liftonway.core.data
 
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.liftonway.core.model.UserProfile
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -26,14 +23,17 @@ sealed interface PendingVerification {
     data class ChangeNumber(override val countryCode: String, override val phone: String) : PendingVerification
 }
 
-private val Context.sessionStore by preferencesDataStore(name = "session")
-
 /**
- * Sign-up, sign-in and the profile. The prototype has no SMS service: any 4-digit code verifies.
- * Only the session flags and the profile are stored on the device, in DataStore.
+ * Sign-up, sign-in and the profile. Codes go through [AuthBackend] (the API, or the offline demo); the session
+ * flags, the profile and the token are kept on the device in DataStore. The profile photo stays on the device:
+ * the API has no photo upload yet.
  */
 @Singleton
-class SessionRepository @Inject constructor(@ApplicationContext context: Context) {
+class SessionRepository @Inject constructor(
+    @ApplicationContext context: Context,
+    private val auth: AuthBackend,
+    private val tokens: TokenStore,
+) {
     private val store = context.sessionStore
 
     var pending: PendingVerification? = null
@@ -42,83 +42,81 @@ class SessionRepository @Inject constructor(@ApplicationContext context: Context
     val session: Flow<Session> = store.data.map { it.toSession() }
 
     suspend fun finishOnboarding() {
-        store.edit { it[Keys.onboarded] = true }
+        store.edit { it[SessionKeys.onboarded] = true }
     }
 
-    fun startSignUp(name: String, countryCode: String, phone: String, photoUri: String?) {
+    /** Sends a code; throws [ApiError] (for example when asked again too soon). */
+    suspend fun startSignUp(name: String, countryCode: String, phone: String, photoUri: String?) {
+        auth.sendCode(countryCode, phone)
         pending = PendingVerification.SignUp(name.trim(), countryCode, phone, photoUri)
     }
 
-    fun startSignIn(countryCode: String, phone: String) {
+    suspend fun startSignIn(countryCode: String, phone: String) {
+        auth.sendCode(countryCode, phone)
         pending = PendingVerification.SignIn(countryCode, phone)
     }
 
-    fun startChangeNumber(countryCode: String, phone: String) {
+    suspend fun startChangeNumber(countryCode: String, phone: String) {
+        auth.sendChangeCode(countryCode, phone)
         pending = PendingVerification.ChangeNumber(countryCode, phone)
     }
 
-    /** True when the code is accepted; the session is updated to match what was being verified. */
-    suspend fun verify(code: String): Boolean {
-        delay(900) // Long enough to see the button's progress state, as a real request would be.
-        val target = pending ?: return false
-        if (code.length != OTP_LENGTH || !code.all(Char::isDigit)) return false
-        store.edit { prefs ->
-            when (target) {
-                is PendingVerification.SignUp -> {
-                    prefs[Keys.name] = target.name
-                    prefs[Keys.countryCode] = target.countryCode
-                    prefs[Keys.phone] = target.phone
-                    target.photoUri?.let { prefs[Keys.photo] = it } ?: prefs.remove(Keys.photo)
-                    prefs[Keys.signedIn] = true
-                }
-                is PendingVerification.SignIn -> {
-                    // A returning user on a fresh install has no stored name yet.
-                    if (prefs[Keys.phone] != target.phone) {
-                        prefs[Keys.name] = prefs[Keys.name] ?: "Traveller"
-                        prefs[Keys.countryCode] = target.countryCode
-                        prefs[Keys.phone] = target.phone
-                    }
-                    prefs[Keys.signedIn] = true
-                }
-                is PendingVerification.ChangeNumber -> {
-                    prefs[Keys.countryCode] = target.countryCode
-                    prefs[Keys.phone] = target.phone
+    /** Checks the code for whatever is pending and updates the session; throws [ApiError] when it fails. */
+    suspend fun verify(code: String) {
+        val target = pending ?: throw ApiError("CODE_NOT_REQUESTED", "Ask for a new code.")
+        when (target) {
+            is PendingVerification.SignUp -> {
+                val signedIn = auth.verify(target.countryCode, target.phone, code, target.name)
+                saveSignedIn(signedIn, target.countryCode, target.phone, target.photoUri)
+            }
+            is PendingVerification.SignIn -> {
+                val signedIn = auth.verify(target.countryCode, target.phone, code, name = null)
+                saveSignedIn(signedIn, target.countryCode, target.phone, photoUri = store.data.first()[SessionKeys.photo])
+            }
+            is PendingVerification.ChangeNumber -> {
+                auth.verifyChange(target.countryCode, target.phone, code)
+                store.edit { prefs ->
+                    prefs[SessionKeys.countryCode] = target.countryCode
+                    prefs[SessionKeys.phone] = target.phone
                 }
             }
         }
         pending = null
-        return true
+    }
+
+    private suspend fun saveSignedIn(signedIn: SignedIn, countryCode: String, phone: String, photoUri: String?) {
+        tokens.set(signedIn.token)
+        store.edit { prefs ->
+            prefs[SessionKeys.name] = signedIn.name
+            prefs[SessionKeys.countryCode] = countryCode
+            prefs[SessionKeys.phone] = phone
+            photoUri?.let { prefs[SessionKeys.photo] = it } ?: prefs.remove(SessionKeys.photo)
+            prefs[SessionKeys.signedIn] = true
+        }
     }
 
     suspend fun updateProfile(name: String, photoUri: String?) {
+        auth.rename(name.trim())
         store.edit { prefs ->
-            prefs[Keys.name] = name.trim()
-            photoUri?.let { prefs[Keys.photo] = it } ?: prefs.remove(Keys.photo)
+            prefs[SessionKeys.name] = name.trim()
+            photoUri?.let { prefs[SessionKeys.photo] = it } ?: prefs.remove(SessionKeys.photo)
         }
     }
 
     suspend fun signOut() {
-        store.edit { it[Keys.signedIn] = false }
+        tokens.set(null)
+        store.edit { it[SessionKeys.signedIn] = false }
     }
 
     private fun Preferences.toSession(): Session {
-        val name = this[Keys.name]
-        val phone = this[Keys.phone]
+        val name = this[SessionKeys.name]
+        val phone = this[SessionKeys.phone]
         val profile = if (name != null && phone != null) {
-            UserProfile(name, this[Keys.countryCode] ?: "+92", phone, this[Keys.photo])
+            UserProfile(name, this[SessionKeys.countryCode] ?: "+92", phone, this[SessionKeys.photo])
         } else {
             null
         }
-        return Session(onboarded = this[Keys.onboarded] == true, signedIn = this[Keys.signedIn] == true, profile = profile)
-    }
-
-    private object Keys {
-        val onboarded = booleanPreferencesKey("onboarded")
-        val signedIn = booleanPreferencesKey("signed_in")
-        val name = stringPreferencesKey("name")
-        val countryCode = stringPreferencesKey("country_code")
-        val phone = stringPreferencesKey("phone")
-        val photo = stringPreferencesKey("photo")
+        return Session(onboarded = this[SessionKeys.onboarded] == true, signedIn = this[SessionKeys.signedIn] == true, profile = profile)
     }
 
     companion object {

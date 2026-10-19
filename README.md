@@ -12,8 +12,19 @@ Open this `android` folder in Android Studio and run the `app` configuration. Fr
 
 For a true sense of smoothness, try a release build (`./gradlew assembleRelease`). Debug Compose builds are much slower, especially the first launch.
 
+## Backend
+
+By default the app talks to the Lift On Way API in `../../LiftOnWay-Backend`. Start it with `./gradlew bootRun` there, which needs Docker Desktop. The emulator reaches it at `http://10.0.2.2:8080/api/v1/`. Debug builds allow plain HTTP to that address only.
+
+- **Other server:** `-Pliftonway.apiUrl=https://...` points the app elsewhere.
+- **Offline demo:** `-Pliftonway.fake=true` builds the original demo with in-memory data and no backend.
+
+**What still uses in-memory data:** notifications and the wallet, which the API doesn't cover yet. The profile photo also stays on the device.
+
+**Token storage:** the API token is kept in the app's private DataStore. Encrypting it with the Android Keystore is a hardening step before release.
+
 **Prototype shortcuts:**
-- Any 4-digit code passes OTP verification.
+- The local backend accepts the code `1234`, and so does the offline demo (it accepts any 4 digits).
 - Cards must pass a Luhn check, so use a published test card number.
 
 ## Stack
@@ -41,6 +52,7 @@ Kotlin, Jetpack Compose (Material 3), Navigation 3, Hilt, Coil 3, DataStore and 
 
 - `core:model`: the 4-hour cancellation rule at its boundaries, and PKR and date formatting.
 - `core:data`: search window, stops staying in the right cities, recommendations, a request being confirmed, cancelling, top-up, paying with too little credit, and saved cards keeping only the last four digits. These use a fixed clock and virtual time.
+- `core:data` (`RemoteApiTest`): the app's side of the API contract, using Ktor's mock engine. It covers JSON to models in Pakistan time, problem messages, the cancel window, signing out on a rejected token, and the offline message.
 - `feature:trips`: a Compose UI test, run on the JVM with Robolectric, that the cancel sheet blocks a ride leaving soon and allows one tomorrow.
 
 ## Baseline profile
@@ -51,7 +63,7 @@ The profile makes release builds start and scroll with pre-compiled code. With a
 ./gradlew :app:generateBaselineProfile
 ```
 
-This writes `app/src/release/generated/baselineProfiles/baseline-prof.txt`, which you should commit.
+This writes `app/src/release/generated/baselineProfiles/baseline-prof.txt`, which you should commit. The journeys sign up and search, so either run the backend first or add `-Pliftonway.fake=true`.
 
 **Two traps on Windows:**
 - **Path length:** the profile is pulled back into a long path under `baselineprofile/build`. If it passes 260 characters, the copy fails without failing the build, and no file appears. Turning on Windows long-path support, or keeping the project in a shorter folder, avoids this.

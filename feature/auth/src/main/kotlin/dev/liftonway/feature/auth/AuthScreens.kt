@@ -45,6 +45,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import dev.liftonway.core.data.BuildConfig
 import dev.liftonway.core.data.PendingVerification
 import dev.liftonway.core.designsystem.animation.LiftAnimation
 import dev.liftonway.core.designsystem.animation.LiftLottie
@@ -155,6 +156,7 @@ fun SignUpRoute(onBack: () -> Unit, onCodeSent: () -> Unit, viewModel: SignUpVie
         )
         Spacer(Modifier.height(38.dp))
         PrimaryButton("Sign up", { viewModel.submit(onCodeSent) }, Modifier.fillMaxWidth().entrance(4), loading = viewModel.sending)
+        Failure(viewModel.failure)
     }
 }
 
@@ -178,6 +180,7 @@ fun SignInRoute(onBack: () -> Unit, onCodeSent: () -> Unit, viewModel: SignInVie
         )
         Spacer(Modifier.height(32.dp))
         PrimaryButton("Sign in", { viewModel.submit(onCodeSent) }, Modifier.fillMaxWidth().entrance(2), loading = viewModel.sending)
+        Failure(viewModel.failure)
     }
 }
 
@@ -228,13 +231,13 @@ fun OtpRoute(onBack: () -> Unit, onVerified: () -> Unit, viewModel: OtpViewModel
             keyboardType = KeyboardType.NumberPassword,
             imeAction = ImeAction.Done,
             onImeAction = { viewModel.verify(onVerified) },
-            isError = viewModel.error,
+            isError = viewModel.error != null,
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            if (viewModel.error) "That code didn’t work. Try again." else "Prototype: any 4-digit code works.",
+            viewModel.error ?: if (BuildConfig.USE_FAKE_BACKEND) "Demo: any 4-digit code works." else "The code can take a moment to arrive.",
             style = MaterialTheme.typography.bodySmall,
-            color = if (viewModel.error) LiftColors.Coral else LiftColors.Hint,
+            color = if (viewModel.error != null) LiftColors.Coral else LiftColors.Hint,
         )
         Spacer(Modifier.height(20.dp))
         PrimaryButton(
@@ -243,6 +246,20 @@ fun OtpRoute(onBack: () -> Unit, onVerified: () -> Unit, viewModel: OtpViewModel
             Modifier.fillMaxWidth().entrance(4),
             enabled = viewModel.code.length == 4,
             loading = viewModel.verifying,
+        )
+    }
+}
+
+/** A server or connection problem under the form's button, sliding in when there is one. */
+@Composable
+private fun Failure(message: String?) {
+    androidx.compose.animation.AnimatedVisibility(message != null) {
+        Text(
+            message.orEmpty(),
+            style = MaterialTheme.typography.bodySmall,
+            color = LiftColors.Coral,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
         )
     }
 }

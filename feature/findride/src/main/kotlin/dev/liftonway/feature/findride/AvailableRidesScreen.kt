@@ -84,12 +84,16 @@ fun AvailableRidesRoute(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val onRequest: (Ride) -> Unit = { ride ->
-        viewModel.request(ride) {
-            scope.launch {
-                val result = snackbar.showSnackbar("Request sent to ${it.driver.name.substringBefore(' ')}", actionLabel = "View")
-                if (result == SnackbarResult.ActionPerformed) onViewRequests()
-            }
-        }
+        viewModel.request(
+            ride,
+            onSent = {
+                scope.launch {
+                    val result = snackbar.showSnackbar("Request sent to ${it.driver.name.substringBefore(' ')}", actionLabel = "View")
+                    if (result == SnackbarResult.ActionPerformed) onViewRequests()
+                }
+            },
+            onFailed = { message -> scope.launch { snackbar.showSnackbar(message) } },
+        )
     }
 
     Box(Modifier.fillMaxSize().background(LiftColors.Canvas)) {
@@ -126,6 +130,19 @@ fun AvailableRidesRoute(
                     }
                 }
                 is RidesState.None -> NoRides(state.recommended, viewModel, onBack, onOpenStops, onRequest)
+                is RidesState.Failed -> Column(Modifier.fillMaxSize().background(Color.White)) {
+                    LiftTopBar("Available rides", onBack = onBack)
+                    Column(
+                        Modifier.fillMaxSize().padding(horizontal = 40.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Text(state.message, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(20.dp))
+                        PrimaryButton("Try again", viewModel::load, Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(96.dp))
+                    }
+                }
             }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.navigationBars).padding(16.dp))

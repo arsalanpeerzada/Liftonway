@@ -6,8 +6,11 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import dev.liftonway.core.data.RideRepository
+import dev.liftonway.core.data.CurrentPerson
+import dev.liftonway.core.data.FakeRideRepository
+import dev.liftonway.core.data.FakeVehicleRepository
 import dev.liftonway.core.designsystem.theme.LiftTheme
+import dev.liftonway.core.model.Person
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import org.junit.Rule
@@ -23,7 +26,12 @@ import java.time.Clock
 class RequestedRidesTest {
     @get:Rule val compose = createComposeRule()
 
-    private val rides = RideRepository(Clock.systemDefaultZone(), CoroutineScope(Dispatchers.Unconfined))
+    private val rides = FakeRideRepository(
+        Clock.systemDefaultZone(),
+        CoroutineScope(Dispatchers.Unconfined),
+        FakeVehicleRepository(),
+        CurrentPerson { Person("me", "Test", null) },
+    )
 
     private fun show() = compose.setContent {
         LiftTheme { RequestedRidesRoute(onBack = {}, onBookRide = {}, viewModel = TripsViewModel(rides)) }

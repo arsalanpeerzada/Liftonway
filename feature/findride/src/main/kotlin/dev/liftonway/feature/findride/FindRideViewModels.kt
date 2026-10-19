@@ -10,17 +10,20 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.liftonway.core.data.ApiError
 import dev.liftonway.core.data.RideRepository
 import dev.liftonway.core.model.Place
 import dev.liftonway.core.model.Policy
 import dev.liftonway.core.model.Ride
 import dev.liftonway.core.model.RideQuery
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import javax.inject.Inject
 
 /** What Available rides needs to repeat a search; plain values so it fits in a navigation key. */
-data class RideSearch(val pickupId: String, val destinationId: String, val epochDay: Long, val seats: Int)
+data class RideSearch(val pickup: Place, val destination: Place, val epochDay: Long, val seats: Int)
 
 enum class LocationField { Pickup, Destination }
 
@@ -42,6 +45,9 @@ class FindRideViewModel @Inject constructor(private val rides: RideRepository) :
 
     fun text(field: LocationField) = if (field == LocationField.Pickup) pickupText else destinationText
 
+    private val found = mutableStateMapOf<LocationField, List<Place>>()
+    private var lookup: Job? = null
+
     fun onText(field: LocationField, value: String) {
         if (field == LocationField.Pickup) {
             pickupText = value
@@ -50,11 +56,19 @@ class FindRideViewModel @Inject constructor(private val rides: RideRepository) :
             destinationText = value
             destination = null
         }
+        lookUp(field)
     }
 
-    fun suggestions(field: LocationField): List<Place> {
-        val other = if (field == LocationField.Pickup) destination else pickup
-        return rides.places(text(field)).filter { it.id != other?.id }.take(5)
+    fun suggestions(field: LocationField): List<Place> = found[field].orEmpty()
+
+    /** Loads places matching the field's text, a moment after typing stops. A failed lookup just shows nothing. */
+    fun lookUp(field: LocationField) {
+        lookup?.cancel()
+        lookup = viewModelScope.launch {
+            delay(150)
+            val other = if (field == LocationField.Pickup) destination else pickup
+            found[field] = runCatching { rides.places(text(field)) }.getOrDefault(emptyList()).filter { it.id != other?.id }.take(5)
+        }
     }
 
     fun choose(field: LocationField, place: Place) {
@@ -78,7 +92,7 @@ class FindRideViewModel @Inject constructor(private val rides: RideRepository) :
         showErrors = true
         val from = pickup ?: return
         val to = destination ?: return
-        onSearch(RideSearch(from.id, to.id, date.toEpochDay(), seats))
+        onSearch(RideSearch(from, to, date.toEpochDay(), seats))
     }
 }
 
@@ -86,6 +100,7 @@ sealed interface RidesState {
     data object Searching : RidesState
     data class Found(val rides: List<Ride>) : RidesState
     data class None(val recommended: List<Ride>) : RidesState
+    data class Failed(val message: String) : RidesState
 }
 
 enum class SortOrder(val label: String) { Earliest("Earliest departure"), Cheapest("Lowest price"), Rating("Highest rated") }
@@ -97,7 +112,7 @@ class AvailableRidesViewModel @AssistedInject constructor(
     @Assisted val search: RideSearch,
     private val rides: RideRepository,
 ) : ViewModel() {
-    private val query = RideQuery(rides.place(search.pickupId), rides.place(search.destinationId), LocalDate.ofEpochDay(search.epochDay), search.seats)
+    private val query = RideQuery(search.pickup, search.destination, LocalDate.ofEpochDay(search.epochDay), search.seats)
 
     var state by mutableStateOf<RidesState>(RidesState.Searching)
         private set
@@ -105,25 +120,40 @@ class AvailableRidesViewModel @AssistedInject constructor(
     val requests = mutableStateMapOf<String, RequestState>()
 
     init {
+        load()
+    }
+
+    fun load() {
+        state = RidesState.Searching
         viewModelScope.launch {
-            val found = rides.search(query)
-            state = if (found.isEmpty()) RidesState.None(rides.recommended(query)) else RidesState.Found(found)
+            state = try {
+                val found = rides.search(query)
+                if (found.isEmpty()) RidesState.None(rides.recommended(query)) else RidesState.Found(found)
+            } catch (e: ApiError) {
+                RidesState.Failed(e.message)
+            }
         }
     }
 
     fun sorted(list: List<Ride>): List<Ride> = when (sort) {
         SortOrder.Earliest -> list.sortedBy { it.departure }
         SortOrder.Cheapest -> list.sortedBy { it.pricePerSeat }
-        SortOrder.Rating -> list.sortedByDescending { it.driver.rating }
+        SortOrder.Rating -> list.sortedByDescending { it.driver.rating ?: 0f }
     }
 
-    fun request(ride: Ride, onSent: (Ride) -> Unit) {
+    /** Calls [onSent] once the driver has the request, or [onFailed] with a message to show. */
+    fun request(ride: Ride, onSent: (Ride) -> Unit, onFailed: (String) -> Unit) {
         if (requests[ride.id] != null) return
         requests[ride.id] = RequestState.Sending
         viewModelScope.launch {
-            rides.request(ride, search.seats)
-            requests[ride.id] = RequestState.Sent
-            onSent(ride)
+            try {
+                rides.request(ride, search.seats)
+                requests[ride.id] = RequestState.Sent
+                onSent(ride)
+            } catch (e: ApiError) {
+                requests.remove(ride.id)
+                onFailed(e.message)
+            }
         }
     }
 
@@ -135,7 +165,12 @@ class AvailableRidesViewModel @AssistedInject constructor(
 
 @HiltViewModel(assistedFactory = RideStopsViewModel.Factory::class)
 class RideStopsViewModel @AssistedInject constructor(@Assisted rideId: String, rides: RideRepository) : ViewModel() {
-    val ride: Ride? = rides.ride(rideId)
+    var ride by mutableStateOf<Ride?>(null)
+        private set
+
+    init {
+        viewModelScope.launch { ride = runCatching { rides.ride(rideId) }.getOrNull() }
+    }
 
     @AssistedFactory
     interface Factory {

@@ -128,6 +128,11 @@ fun LiftOnWayApp(app: AppViewModel = hiltViewModel()) {
         }
     }
 
+    // The server stopped accepting the token: go back to sign-in rather than failing every call.
+    LaunchedEffect(session?.signedIn) {
+        if (session?.signedIn == false && backStack.contains(MainKey)) reset(AuthChoiceKey)
+    }
+
     Box(Modifier.fillMaxSize().background(Color.White)) {
         if (backStack.isNotEmpty()) {
             SharedTransitionLayout {

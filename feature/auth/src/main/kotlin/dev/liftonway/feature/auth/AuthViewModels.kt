@@ -7,10 +7,10 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.liftonway.core.data.ApiError
 import dev.liftonway.core.data.PendingVerification
 import dev.liftonway.core.data.PhotoStore
 import dev.liftonway.core.data.SessionRepository
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -31,6 +31,10 @@ class SignUpViewModel @Inject constructor(
     var sending by mutableStateOf(false)
         private set
 
+    /** What went wrong on the last attempt, from the server or the connection. */
+    var failure by mutableStateOf<String?>(null)
+        private set
+
     val nameError get() = showErrors && name.isBlank()
     val phoneError get() = showErrors && phone.length < MIN_PHONE_DIGITS
 
@@ -43,10 +47,15 @@ class SignUpViewModel @Inject constructor(
         if (name.isBlank() || phone.length < MIN_PHONE_DIGITS || sending) return
         viewModelScope.launch {
             sending = true
-            delay(700) // Stands in for the request that sends the SMS.
-            session.startSignUp(name, countryCode, phone, photoUri)
-            sending = false
-            onCodeSent()
+            failure = null
+            try {
+                session.startSignUp(name, countryCode, phone, photoUri)
+                onCodeSent()
+            } catch (e: ApiError) {
+                failure = e.message
+            } finally {
+                sending = false
+            }
         }
     }
 }
@@ -59,6 +68,8 @@ class SignInViewModel @Inject constructor(private val session: SessionRepository
         private set
     var sending by mutableStateOf(false)
         private set
+    var failure by mutableStateOf<String?>(null)
+        private set
 
     val phoneError get() = showErrors && phone.length < MIN_PHONE_DIGITS
 
@@ -67,10 +78,15 @@ class SignInViewModel @Inject constructor(private val session: SessionRepository
         if (phone.length < MIN_PHONE_DIGITS || sending) return
         viewModelScope.launch {
             sending = true
-            delay(700)
-            session.startSignIn(countryCode, phone)
-            sending = false
-            onCodeSent()
+            failure = null
+            try {
+                session.startSignIn(countryCode, phone)
+                onCodeSent()
+            } catch (e: ApiError) {
+                failure = e.message
+            } finally {
+                sending = false
+            }
         }
     }
 }
@@ -82,23 +98,29 @@ class OtpViewModel @Inject constructor(private val session: SessionRepository) :
 
     var code by mutableStateOf("")
         private set
-    var error by mutableStateOf(false)
+    /** The reason the last code was refused, ready to show. */
+    var error by mutableStateOf<String?>(null)
         private set
     var verifying by mutableStateOf(false)
         private set
 
     fun onCode(value: String) {
         code = value.filter(Char::isDigit).take(SessionRepository.OTP_LENGTH)
-        error = false
+        error = null
     }
 
     fun verify(onVerified: () -> Unit) {
         if (verifying) return
         viewModelScope.launch {
             verifying = true
-            val ok = session.verify(code)
-            verifying = false
-            if (ok) onVerified() else error = true
+            try {
+                session.verify(code)
+                onVerified()
+            } catch (e: ApiError) {
+                error = e.message
+            } finally {
+                verifying = false
+            }
         }
     }
 }

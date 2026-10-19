@@ -7,18 +7,18 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.liftonway.core.data.ApiError
 import dev.liftonway.core.data.RideRepository
-import dev.liftonway.core.data.SessionRepository
 import dev.liftonway.core.data.VehicleRepository
-import dev.liftonway.core.model.Person
 import dev.liftonway.core.model.Place
 import dev.liftonway.core.model.Policy
 import dev.liftonway.core.model.RideDraft
 import dev.liftonway.core.model.Vehicle
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
@@ -29,6 +29,7 @@ import javax.inject.Inject
 class AddressField(val id: String = UUID.randomUUID().toString()) {
     var text by mutableStateOf("")
     var place by mutableStateOf<Place?>(null)
+    var suggestions by mutableStateOf<List<Place>>(emptyList())
 }
 
 /**
@@ -38,7 +39,6 @@ class AddressField(val id: String = UUID.randomUUID().toString()) {
 @HiltViewModel
 class PublishViewModel @Inject constructor(
     private val rides: RideRepository,
-    private val session: SessionRepository,
     vehicles: VehicleRepository,
 ) : ViewModel() {
     val pickup = AddressField()
@@ -56,16 +56,31 @@ class PublishViewModel @Inject constructor(
     var published by mutableStateOf(false)
         private set
 
+    /** Why the last publish attempt failed, from the server or the connection. */
+    var failure by mutableStateOf<String?>(null)
+        private set
+    private var lookup: Job? = null
+
     val vehicle: StateFlow<Vehicle?> = vehicles.vehicle.stateIn(viewModelScope, SharingStarted.Eagerly, vehicles.vehicle.value)
 
-    fun suggestions(field: AddressField): List<Place> {
-        val taken = (listOf(pickup, destination) + stops).filter { it !== field }.mapNotNull { it.place?.id }.toSet()
-        return rides.places(field.text).filterNot { it.id in taken }.take(5)
+    init {
+        viewModelScope.launch { runCatching { vehicles.refresh() } }
+    }
+
+    /** Loads places for [field], a moment after typing stops; a failed lookup just shows nothing. */
+    fun lookUp(field: AddressField) {
+        lookup?.cancel()
+        lookup = viewModelScope.launch {
+            delay(150)
+            val taken = (listOf(pickup, destination) + stops).filter { it !== field }.mapNotNull { it.place?.id }.toSet()
+            field.suggestions = runCatching { rides.places(field.text) }.getOrDefault(emptyList()).filterNot { it.id in taken }.take(5)
+        }
     }
 
     fun onText(field: AddressField, value: String) {
         field.text = value
         field.place = null
+        lookUp(field)
     }
 
     fun choose(field: AddressField, place: Place) {
@@ -94,12 +109,16 @@ class PublishViewModel @Inject constructor(
         if (pickup.place == null || destination.place == null || car == null || stops.any { it.place == null } || publishing) return
         viewModelScope.launch {
             publishing = true
-            val profile = session.session.first().profile
-            val me = Person("me", profile?.name ?: "You", 5f, profile?.photoUri)
+            failure = null
             val draft = RideDraft(pickup.place, destination.place, stops.mapNotNull { it.place }, date, time, seats, route.trim())
-            rides.publish(draft, car, me, SUGGESTED_FARE)
-            publishing = false
-            published = true
+            try {
+                rides.publish(draft, SUGGESTED_FARE)
+                published = true
+            } catch (e: ApiError) {
+                failure = e.message
+            } finally {
+                publishing = false
+            }
         }
     }
 
