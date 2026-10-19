@@ -104,6 +104,12 @@ data class SessionDto(
 data class RefreshBody(val refreshToken: String)
 
 @Serializable
+data class LogoutBody(val refreshToken: String, val deviceToken: String? = null)
+
+@Serializable
+data class DeviceBody(val token: String)
+
+@Serializable
 data class RenewedDto(val token: String, val expiresAt: String, val refreshToken: String, val refreshExpiresAt: String)
 
 @Serializable

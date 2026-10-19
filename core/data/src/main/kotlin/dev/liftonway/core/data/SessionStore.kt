@@ -31,6 +31,10 @@ internal object SessionKeys {
     val accessToken = stringPreferencesKey("access_token_sealed")
     val refreshToken = stringPreferencesKey("refresh_token_sealed")
 
+    /** This install's push token, sent at sign-out so the server stops pushing to a signed-out phone. */
+    val deviceToken = stringPreferencesKey("device_token")
+    val askedNotifications = booleanPreferencesKey("asked_notifications")
+
     /** Plain token from builds before encryption; removed on sight. */
     val legacyToken = stringPreferencesKey("token")
 }

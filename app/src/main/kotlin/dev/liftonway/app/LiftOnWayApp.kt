@@ -1,5 +1,9 @@
 package dev.liftonway.app
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -109,7 +113,7 @@ private enum class Tab { Home, Trips, Notifications, Profile }
  * the session is known and its animation has played, then fades away to reveal the first screen.
  */
 @Composable
-fun LiftOnWayApp(app: AppViewModel = hiltViewModel()) {
+fun LiftOnWayApp(openNotifications: Boolean = false, onOpened: () -> Unit = {}, app: AppViewModel = hiltViewModel()) {
     val session by app.session.collectAsStateWithLifecycle()
     val pending by app.pending.collectAsStateWithLifecycle()
     val backStack = remember { mutableStateListOf<Destination>() }
@@ -138,6 +142,21 @@ fun LiftOnWayApp(app: AppViewModel = hiltViewModel()) {
     // The server stopped accepting the token: go back to sign-in rather than failing every call.
     LaunchedEffect(session?.signedIn) {
         if (session?.signedIn == false && backStack.contains(MainKey)) reset(AuthChoiceKey)
+    }
+
+    // Push: register this phone once signed in, and ask (once) to show notifications on Android 13 and later.
+    val askPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    LaunchedEffect(session?.signedIn) {
+        if (session?.signedIn != true) return@LaunchedEffect
+        if (app.setUpPush() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) askPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    // Opened from a push: show the Notifications tab.
+    LaunchedEffect(openNotifications, session?.signedIn) {
+        if (!openNotifications || session?.signedIn != true) return@LaunchedEffect
+        tab = Tab.Notifications.ordinal
+        reset(MainKey)
+        onOpened()
     }
 
     // New requests and answers arrive while the app is open; nothing runs once it's in the background.

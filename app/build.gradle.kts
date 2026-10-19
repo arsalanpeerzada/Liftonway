@@ -1,3 +1,4 @@
+import groovy.json.JsonSlurper
 import java.util.Properties
 
 plugins {
@@ -18,6 +19,13 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0-prototype"
+
+        // Push needs the Firebase app's identifiers. They come from google-services.json (not committed);
+        // without it the app builds and runs with push switched off.
+        val firebase = firebaseConfig(applicationId!!)
+        listOf("APP_ID", "API_KEY", "PROJECT_ID", "SENDER_ID").forEach { key ->
+            buildConfigField("String", "FIREBASE_$key", "\"${firebase[key].orEmpty()}\"")
+        }
     }
 
     // The Play upload key comes from keystore.properties (never committed) or LIFTONWAY_* environment variables
@@ -49,7 +57,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 }
 
 dependencies {
@@ -74,6 +85,8 @@ dependencies {
     implementation(libs.androidx.hilt.lifecycle.viewmodel.compose)
 
     implementation(libs.hilt.android)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
     ksp(libs.hilt.compiler)
 
     // Installs the generated baseline profile so release builds start and scroll pre-compiled.
@@ -93,4 +106,25 @@ fun uploadKey(): Properties? {
     ).mapValues { System.getenv(it.value) }
     if (env.values.any { it.isNullOrBlank() }) return null
     return Properties().apply { env.forEach { (k, v) -> setProperty(k, v) } }
+}
+
+/**
+ * Reads the four values Firebase needs from app/google-services.json, for the client registered under
+ * [packageName]. Empty when the file is missing. This replaces the google-services Gradle plugin.
+ */
+fun firebaseConfig(packageName: String): Map<String, String> {
+    val file = project.file("google-services.json")
+    if (!file.exists()) return emptyMap()
+    @Suppress("UNCHECKED_CAST")
+    val json = JsonSlurper().parse(file) as Map<String, Any?>
+    val project = json["project_info"] as Map<String, Any?>
+    val client = (json["client"] as List<Map<String, Any?>>).firstOrNull {
+        ((it["client_info"] as Map<String, Any?>)["android_client_info"] as Map<String, Any?>)["package_name"] == packageName
+    } ?: error("google-services.json has no Android app registered as $packageName")
+    return mapOf(
+        "APP_ID" to (client["client_info"] as Map<String, Any?>)["mobilesdk_app_id"] as String,
+        "API_KEY" to ((client["api_key"] as List<Map<String, Any?>>).first()["current_key"] as String),
+        "PROJECT_ID" to project["project_id"] as String,
+        "SENDER_ID" to project["project_number"] as String,
+    )
 }

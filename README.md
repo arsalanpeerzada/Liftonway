@@ -22,6 +22,15 @@ By default debug builds talk to the Lift On Way API in `../../LiftOnWay-Backend`
 
 **What still uses in-memory data:** the wallet and payments. The profile photo also stays on the device.
 
+**Push notifications:**
+- **Setup:** register the Android app in the Firebase project with package name `io.github.arsalanpeerzada.liftonway`, download `google-services.json` into `app/` (Git ignores it) and rebuild. The build reads the four values it needs from that file and starts Firebase itself, so the google-services Gradle plugin isn't used. Without the file, push is simply off.
+- **Behaviour:**
+  - After sign-in the app registers the phone with the API.
+  - It asks once for the notification permission on Android 13 and later.
+  - Pushes arrive as data messages, so the app builds each notification itself. Tapping one opens the Notifications tab.
+  - On a locked screen only "New activity on your rides" shows, because the full text names people and places.
+  - Signing out stops pushes to that phone.
+
 **Sessions:**
 - The app holds a 15-minute access token and a refresh token, both encrypted with an AES key that never leaves the Android Keystore.
 - When the access token runs out, the API client renews it once, one renewal at a time, and repeats the call.

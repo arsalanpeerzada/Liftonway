@@ -5,7 +5,8 @@ import dev.liftonway.core.data.remote.CodeVerify
 import dev.liftonway.core.data.remote.LiftApi
 import dev.liftonway.core.data.remote.MeDto
 import dev.liftonway.core.data.remote.NameBody
-import dev.liftonway.core.data.remote.RefreshBody
+import dev.liftonway.core.data.remote.DeviceBody
+import dev.liftonway.core.data.remote.LogoutBody
 import dev.liftonway.core.data.remote.SessionDto
 import io.ktor.client.request.setBody
 import io.ktor.client.request.url
@@ -27,8 +28,11 @@ interface AuthBackend {
     suspend fun verifyChange(countryCode: String, phone: String, code: String)
     suspend fun rename(name: String)
 
-    /** Ends this device's session on the server. Best effort: the app signs out locally either way. */
-    suspend fun signOut(refreshToken: String)
+    /** Ends this device's session on the server and stops its pushes. Best effort: the app signs out locally either way. */
+    suspend fun signOut(refreshToken: String, deviceToken: String?)
+
+    /** Registers this install for push notifications. */
+    suspend fun registerDevice(token: String)
 }
 
 @Singleton
@@ -54,10 +58,16 @@ class RemoteAuthBackend @Inject constructor(private val api: LiftApi) : AuthBack
         return SignedIn(session.token, session.refreshToken, session.user.name)
     }
 
-    override suspend fun signOut(refreshToken: String) = api.exec {
+    override suspend fun signOut(refreshToken: String, deviceToken: String?) = api.exec {
         method = HttpMethod.Post
         url("auth/logout")
-        setBody(RefreshBody(refreshToken))
+        setBody(LogoutBody(refreshToken, deviceToken))
+    }
+
+    override suspend fun registerDevice(token: String) = api.exec {
+        method = HttpMethod.Put
+        url("me/device")
+        setBody(DeviceBody(token))
     }
 
     override suspend fun sendChangeCode(countryCode: String, phone: String) = api.exec {
@@ -103,7 +113,9 @@ class FakeAuthBackend @Inject constructor() : AuthBackend {
 
     override suspend fun rename(name: String) = delay(600)
 
-    override suspend fun signOut(refreshToken: String) = Unit
+    override suspend fun signOut(refreshToken: String, deviceToken: String?) = Unit
+
+    override suspend fun registerDevice(token: String) = Unit
 
     private fun checkCode(code: String) {
         if (code.length != 4 || !code.all(Char::isDigit)) throw ApiError("INVALID_CODE", "That code didn't work.")

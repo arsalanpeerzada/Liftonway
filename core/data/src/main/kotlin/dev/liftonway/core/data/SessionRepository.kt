@@ -106,15 +106,32 @@ class SessionRepository @Inject constructor(
     /** Signs out here at once, then tells the server; if that fails (say, offline) the session lapses on its own. */
     suspend fun signOut() {
         val refresh = tokens.refreshToken()
+        val device = store.data.first()[SessionKeys.deviceToken]
         tokens.clear()
         store.edit { it[SessionKeys.signedIn] = false }
         if (refresh != null) {
             try {
-                auth.signOut(refresh)
+                auth.signOut(refresh, device)
             } catch (_: ApiError) {
                 // Nothing to show: the user is already signed out on this device.
             }
         }
+    }
+
+    /**
+     * Tells the server where to push for the signed-in user. Called after sign-in and whenever Firebase rotates
+     * the token; does nothing while signed out (the next sign-in registers it).
+     */
+    suspend fun registerDevice(token: String) {
+        store.edit { it[SessionKeys.deviceToken] = token }
+        if (store.data.first()[SessionKeys.signedIn] == true) auth.registerDevice(token)
+    }
+
+    /** Whether the app has already asked for permission to show notifications (asked once, after sign-in). */
+    suspend fun askedNotifications(): Boolean = store.data.first()[SessionKeys.askedNotifications] == true
+
+    suspend fun markAskedNotifications() {
+        store.edit { it[SessionKeys.askedNotifications] = true }
     }
 
     private fun Preferences.toSession(): Session {
