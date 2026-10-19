@@ -70,6 +70,7 @@ import dev.liftonway.feature.profile.ProfileRoute
 import dev.liftonway.feature.profile.VehicleRoute
 import dev.liftonway.feature.publish.PublishRideRoute
 import dev.liftonway.feature.trips.MyTripsRoute
+import dev.liftonway.feature.trips.BookingDetailsRoute
 import dev.liftonway.feature.trips.PublishedRideRoute
 import dev.liftonway.feature.trips.PublishedRidesRoute
 import dev.liftonway.feature.trips.RequestedRidesRoute
@@ -92,6 +93,7 @@ data object PublishKey : Destination
 data object RequestedKey : Destination
 data object PublishedKey : Destination
 data class PublishedRideKey(val rideId: String) : Destination
+data class BookingKey(val bookingId: String) : Destination
 data object EditProfileKey : Destination
 data object ChangeNumberKey : Destination
 data object VehicleKey : Destination
@@ -225,7 +227,7 @@ fun LiftOnWayApp(app: AppViewModel = hiltViewModel()) {
                                 }
                             }
                             entry<RequestedKey> {
-                                Animated { RequestedRidesRoute(onBack = { pop() }, onBookRide = { backStack[backStack.lastIndex] = FindRideKey }) }
+                                Animated { RequestedRidesRoute(onBack = { pop() }, onBookRide = { backStack[backStack.lastIndex] = FindRideKey }, onOpen = { push(BookingKey(it)) }) }
                             }
                             entry<PublishedKey> {
                                 Animated {
@@ -237,6 +239,7 @@ fun LiftOnWayApp(app: AppViewModel = hiltViewModel()) {
                                 }
                             }
                             entry<PublishedRideKey> { key -> Animated { PublishedRideRoute(key.rideId, onBack = { pop() }) } }
+                            entry<BookingKey> { key -> Animated { BookingDetailsRoute(key.bookingId, onBack = { pop() }) } }
                             entry<EditProfileKey> { Animated { EditProfileRoute(onBack = { pop() }) } }
                             entry<ChangeNumberKey> { Animated { ChangeNumberRoute(onBack = { pop() }, onCodeSent = { push(OtpKey) }) } }
                             entry<VehicleKey> { Animated { VehicleRoute(onBack = { pop() }) } }
@@ -320,7 +323,13 @@ private fun TabContent(tab: Tab, padding: PaddingValues, onTab: (Tab) -> Unit, n
     when (tab) {
         Tab.Home -> HomeRoute(onFindRide = { navigate(FindRideKey) }, onPublishRide = { navigate(PublishKey) }, contentPadding = padding)
         Tab.Trips -> MyTripsRoute(onBack = home, onRequested = { navigate(RequestedKey) }, onPublished = { navigate(PublishedKey) }, contentPadding = padding)
-        Tab.Notifications -> NotificationsRoute(onBack = home, onOpenWallet = { navigate(WalletKey) }, contentPadding = padding)
+        Tab.Notifications -> NotificationsRoute(
+            onBack = home,
+            onOpenWallet = { navigate(WalletKey) },
+            onOpenRide = { navigate(PublishedRideKey(it)) },
+            onOpenBooking = { navigate(BookingKey(it)) },
+            contentPadding = padding,
+        )
         Tab.Profile -> ProfileRoute(
             onBack = home,
             onEditProfile = { navigate(EditProfileKey) },

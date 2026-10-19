@@ -32,10 +32,7 @@ class AddressField(val id: String = UUID.randomUUID().toString()) {
     var suggestions by mutableStateOf<List<Place>>(emptyList())
 }
 
-/**
- * The publish form. The designs have no price field, so the prototype asks a flat suggested fare per seat;
- * a price input is a gap to raise with design.
- */
+/** The publish form. The price per seat wasn't in the designs; it follows the seats picker's style. */
 @HiltViewModel
 class PublishViewModel @Inject constructor(
     private val rides: RideRepository,
@@ -48,6 +45,7 @@ class PublishViewModel @Inject constructor(
     var time: LocalTime by mutableStateOf(LocalTime.of(8, 0))
     var seats by mutableStateOf(1)
         private set
+    var price by mutableStateOf(Policy.DEFAULT_FARE)
     var route by mutableStateOf("")
     var showErrors by mutableStateOf(false)
         private set
@@ -112,7 +110,7 @@ class PublishViewModel @Inject constructor(
             failure = null
             val draft = RideDraft(pickup.place, destination.place, stops.mapNotNull { it.place }, date, time, seats, route.trim())
             try {
-                rides.publish(draft, SUGGESTED_FARE)
+                rides.publish(draft, price)
                 published = true
             } catch (e: ApiError) {
                 failure = e.message
@@ -124,6 +122,5 @@ class PublishViewModel @Inject constructor(
 
     companion object {
         const val MAX_STOPS = 3
-        const val SUGGESTED_FARE = 500L
     }
 }

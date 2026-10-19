@@ -41,7 +41,30 @@ data class RideDto(
 )
 
 @Serializable
-data class BookingDto(val id: String, val ride: RideDto, val seats: Int, val status: String, val tripStatus: String, val canCancel: Boolean)
+data class VehicleBriefDto(
+    val name: String,
+    val model: String,
+    val colour: String,
+    val airConditioning: Boolean,
+    val heater: Boolean,
+    val plate: String? = null,
+)
+
+@Serializable
+data class BookingDto(
+    val id: String,
+    val ride: RideDto,
+    val seats: Int,
+    val status: String,
+    val tripStatus: String,
+    val canCancel: Boolean,
+    val vehicle: VehicleBriefDto? = null,
+    val myRating: Int? = null,
+    val canRate: Boolean = false,
+)
+
+@Serializable
+data class RateBody(val stars: Int)
 
 @Serializable
 data class PassengerDto(
@@ -51,6 +74,8 @@ data class PassengerDto(
     val photoUrl: String? = null,
     val seats: Int,
     val status: String,
+    val myRating: Int? = null,
+    val canRate: Boolean = false,
 )
 
 @Serializable
@@ -119,12 +144,23 @@ internal fun tripStatus(value: String) = when (value) {
     else -> TripStatus.Upcoming
 }
 
-internal fun BookingDto.toModel() = Booking(id, ride.toModel(), seats, tripStatus(tripStatus), confirmed = status == "CONFIRMED")
+internal fun BookingDto.toModel() = Booking(
+    id,
+    ride.toModel(),
+    seats,
+    tripStatus(tripStatus),
+    confirmed = status == "CONFIRMED",
+    vehicle = vehicle?.let { Vehicle(it.name, it.model, it.plate.orEmpty(), it.colour, it.airConditioning, it.heater) },
+    myRating = myRating,
+    canRate = canRate,
+)
 
 internal fun PublishedRideDto.toModel() = PublishedRide(
     ride.toModel(),
     tripStatus(tripStatus),
-    passengers.map { Passenger(it.bookingId, Person(it.passengerId, it.name, rating = null, photoUri = it.photoUrl), it.seats, confirmed = it.status == "CONFIRMED") },
+    passengers.map {
+        Passenger(it.bookingId, Person(it.passengerId, it.name, rating = null, photoUri = it.photoUrl), it.seats, it.status == "CONFIRMED", it.myRating, it.canRate)
+    },
     canCancel = canCancel,
     canComplete = canComplete,
 )
@@ -196,6 +232,7 @@ internal fun NotificationDto.toModel(): AppNotification? {
         actionable = actionable,
         outcome = outcome,
         bookingId = bookingId,
+        rideId = ride?.id,
         read = read,
     )
 }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -41,6 +42,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -90,6 +93,62 @@ fun SeatsSheet(title: String, seats: Int, onChange: (Int) -> Unit, onDismiss: ()
     }
 }
 
+/**
+ * The fare per seat: steps of [Policy.FARE_STEP] either way, or one of the common fares in a tap.
+ * The amount rolls like the seat count.
+ */
+@Composable
+fun PriceSheet(price: Long, onChange: (Long) -> Unit, onDismiss: () -> Unit) {
+    val haptics = LocalHapticFeedback.current
+    fun set(value: Long) {
+        haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+        onChange(value.coerceIn(Policy.MIN_FARE, Policy.MAX_FARE))
+    }
+    LiftSheet(onDismiss) { dismiss ->
+        Text("Price per seat", style = MaterialTheme.typography.headlineSmall)
+        Spacer(Modifier.height(28.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            StepButton(LiftIcons.Close, "Lower price", enabled = price > Policy.MIN_FARE, minus = true) { set(price - Policy.FARE_STEP) }
+            Spacer(Modifier.width(20.dp))
+            Column(Modifier.width(170.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("PKR", style = MaterialTheme.typography.bodyMedium, color = LiftColors.Hint)
+                AnimatedContent(
+                    targetState = price,
+                    transitionSpec = {
+                        val up = targetState > initialState
+                        (slideInVertically(tween(Motion.MEDIUM, easing = Motion.Emphasized)) { if (up) it else -it } + fadeIn()) togetherWith
+                            (slideOutVertically(tween(Motion.MEDIUM, easing = Motion.Emphasized)) { if (up) -it else it } + fadeOut())
+                    },
+                    label = "price",
+                ) {
+                    Text("%,d".format(it), style = TextStyle(fontFamily = Jakarta, fontWeight = FontWeight.Light, fontSize = 56.sp, color = LiftColors.Ink))
+                }
+            }
+            Spacer(Modifier.width(20.dp))
+            StepButton(LiftIcons.Plus, "Higher price", enabled = price < Policy.MAX_FARE) { set(price + Policy.FARE_STEP) }
+        }
+        Spacer(Modifier.height(24.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(300L, 500L, 800L, 1200L, 2000L).forEach { fare ->
+                val selected = fare == price
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .clip(CircleShape)
+                        .background(if (selected) LiftColors.Green else LiftColors.Muted)
+                        .clickable(role = Role.RadioButton, onClickLabel = "PKR $fare") { set(fare) }
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("%,d".format(fare), style = MaterialTheme.typography.bodyMedium, color = if (selected) Color.White else LiftColors.TextSecondary)
+                }
+            }
+        }
+        Spacer(Modifier.height(28.dp))
+        PrimaryButton("Done", dismiss, Modifier.fillMaxWidth())
+    }
+}
+
 @Composable
 private fun StepButton(icon: ImageVector, label: String, enabled: Boolean, minus: Boolean = false, onClick: () -> Unit) {
     Box(
@@ -101,7 +160,7 @@ private fun StepButton(icon: ImageVector, label: String, enabled: Boolean, minus
         contentAlignment = Alignment.Center,
     ) {
         if (minus) {
-            Box(Modifier.width(16.dp).height(2.5.dp).clip(CircleShape).background(Color.White))
+            Box(Modifier.width(16.dp).height(2.5.dp).clip(CircleShape).background(Color.White).semantics { contentDescription = label })
         } else {
             Icon(icon, label, tint = Color.White, modifier = Modifier.size(22.dp))
         }

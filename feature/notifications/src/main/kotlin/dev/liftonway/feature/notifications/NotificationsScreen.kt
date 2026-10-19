@@ -152,7 +152,14 @@ class NotificationsViewModel @Inject constructor(private val repository: Notific
 }
 
 @Composable
-fun NotificationsRoute(onBack: () -> Unit, onOpenWallet: () -> Unit, contentPadding: PaddingValues, viewModel: NotificationsViewModel = hiltViewModel()) {
+fun NotificationsRoute(
+    onBack: () -> Unit,
+    onOpenWallet: () -> Unit,
+    onOpenRide: (String) -> Unit,
+    onOpenBooking: (String) -> Unit,
+    contentPadding: PaddingValues,
+    viewModel: NotificationsViewModel = hiltViewModel(),
+) {
     val items by viewModel.items.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -186,7 +193,15 @@ fun NotificationsRoute(onBack: () -> Unit, onOpenWallet: () -> Unit, contentPadd
                                 fresh = item.id in viewModel.fresh,
                                 busy = viewModel.busy[item.id] == true,
                                 onAnswer = { accept -> viewModel.answer(item, accept, noCredit, showError) },
-                                onOpen = { if (item.kind == NotificationKind.RideRequest && item.actionable) viewModel.asking = item },
+                                onOpen = {
+                                    val booking = item.bookingId
+                                    val ride = item.rideId
+                                    when {
+                                        item.kind == NotificationKind.RideRequest && item.actionable -> viewModel.asking = item
+                                        item.kind in DriverSide && ride != null -> onOpenRide(ride)
+                                        item.kind in PassengerSide && booking != null -> onOpenBooking(booking)
+                                    }
+                                },
                                 onDelete = { viewModel.remove(item, showError) },
                             )
                         }
@@ -218,6 +233,10 @@ fun NotificationsRoute(onBack: () -> Unit, onOpenWallet: () -> Unit, contentPadd
         }
     }
 }
+
+/** Updates about the user's own published ride open that ride; updates about a seat they asked for open the booking. */
+private val DriverSide = setOf(NotificationKind.RideRequest, NotificationKind.RequestWithdrawn)
+private val PassengerSide = setOf(NotificationKind.RequestAccepted, NotificationKind.RequestDeclined, NotificationKind.RideCancelled, NotificationKind.RideCompleted)
 
 /** Swipe a notification sideways to clear it. */
 @Composable

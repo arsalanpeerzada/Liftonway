@@ -146,7 +146,17 @@ class FakeRideRepository @Inject constructor(
 
     override suspend fun completeRide(rideId: String) {
         delay(700)
-        updatePublished(rideId) { it.copy(status = TripStatus.Completed, passengers = it.passengers.filter { p -> p.confirmed }, canCancel = false, canComplete = false) }
+        updatePublished(rideId) {
+            it.copy(status = TripStatus.Completed, passengers = it.passengers.filter { p -> p.confirmed }.map { p -> p.copy(canRate = true) }, canCancel = false, canComplete = false)
+        }
+    }
+
+    override suspend fun rate(bookingId: String, stars: Int) {
+        delay(600)
+        _bookings.update { list -> list.map { if (it.id == bookingId) it.copy(myRating = stars, canRate = false) else it } }
+        _published.update { list ->
+            list.map { p -> p.copy(passengers = p.passengers.map { if (it.bookingId == bookingId) it.copy(myRating = stars, canRate = false) else it }) }
+        }
     }
 
     private fun updatePublished(rideId: String, change: (PublishedRide) -> PublishedRide) {
@@ -206,10 +216,11 @@ class FakeRideRepository @Inject constructor(
             id = id, driver = driver, departure = departure, pickup = SampleData.place(from), destination = SampleData.place(to),
             stops = emptyList(), vehicleName = car, totalSeats = 3, pricePerSeat = price,
         ).also { cache[id] = it }
+        fun car(name: String, plate: String) = Vehicle(name, "2021", plate, "White", airConditioning = true, heater = false)
         return listOf(
-            Booking("b1", ride("seed-1", SampleData.drivers[0], LocalDateTime.of(today.plusDays(1), LocalTime.of(8, 0)), "f7", "saddar", "Toyota Corolla", 450), 1, TripStatus.Upcoming, confirmed = false),
-            Booking("b2", ride("seed-2", SampleData.drivers[1], soon, "blue", "bahria", "Honda Civic", 600), 1, TripStatus.Upcoming, confirmed = true),
-            Booking("b3", ride("seed-3", SampleData.drivers[2], LocalDateTime.of(today.minusDays(3), LocalTime.of(17, 45)), "g11", "airport", "Suzuki Cultus", 800), 2, TripStatus.Completed, confirmed = true),
+            Booking("b1", ride("seed-1", SampleData.drivers[0], LocalDateTime.of(today.plusDays(1), LocalTime.of(8, 0)), "f7", "saddar", "Toyota Corolla", 450), 1, TripStatus.Upcoming, confirmed = false, vehicle = car("Toyota Corolla", "")),
+            Booking("b2", ride("seed-2", SampleData.drivers[1], soon, "blue", "bahria", "Honda Civic", 600), 1, TripStatus.Upcoming, confirmed = true, vehicle = car("Honda Civic", "ICT 7781")),
+            Booking("b3", ride("seed-3", SampleData.drivers[2], LocalDateTime.of(today.minusDays(3), LocalTime.of(17, 45)), "g11", "airport", "Suzuki Cultus", 800), 2, TripStatus.Completed, confirmed = true, vehicle = car("Suzuki Cultus", "LEB 2291"), canRate = true),
         )
     }
 

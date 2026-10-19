@@ -10,5 +10,11 @@ object Policy {
 
     const val MAX_SEATS = 6
 
+    /** Fares per seat the server accepts, in whole rupees, and the step the picker moves in. */
+    const val MIN_FARE: Rupees = 50
+    const val MAX_FARE: Rupees = 50_000
+    const val FARE_STEP: Rupees = 50
+    const val DEFAULT_FARE: Rupees = 500
+
     fun canCancel(departure: LocalDateTime, now: LocalDateTime): Boolean = Duration.between(now, departure) >= CancelCutoff
 }

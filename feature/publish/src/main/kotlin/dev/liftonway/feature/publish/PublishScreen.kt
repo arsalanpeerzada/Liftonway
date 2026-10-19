@@ -57,12 +57,14 @@ import dev.liftonway.core.designsystem.component.SearchGlyph
 import dev.liftonway.core.designsystem.component.SeatsSheet
 import dev.liftonway.core.designsystem.component.Section
 import dev.liftonway.core.designsystem.component.SelectorRow
+import dev.liftonway.core.designsystem.component.PriceSheet
 import dev.liftonway.core.designsystem.component.TextAction
 import dev.liftonway.core.designsystem.component.TimeSheet
 import dev.liftonway.core.designsystem.component.shakeOnError
 import dev.liftonway.core.designsystem.icon.LiftIcons
 import dev.liftonway.core.designsystem.motion.entrance
 import dev.liftonway.core.designsystem.theme.LiftColors
+import dev.liftonway.core.model.asPkr
 import dev.liftonway.core.model.chip
 import dev.liftonway.core.model.clock
 
@@ -77,6 +79,7 @@ fun PublishRideRoute(
     var datePicker by rememberSaveable { mutableStateOf(false) }
     var timeSheet by rememberSaveable { mutableStateOf(false) }
     var seatsSheet by rememberSaveable { mutableStateOf(false) }
+    var priceSheet by rememberSaveable { mutableStateOf(false) }
     val focus = LocalFocusManager.current
 
     Column(Modifier.fillMaxSize().background(LiftColors.Canvas).imePadding()) {
@@ -110,6 +113,9 @@ fun PublishRideRoute(
                 Section(Modifier.weight(1f), label = "Available seats") {
                     SelectorRow(LiftIcons.Person, viewModel.seats.toString(), { seatsSheet = true }, contentDescription = "Change seats")
                 }
+            }
+            Section(Modifier.height(96.dp).entrance(3), label = "Price per seat") {
+                SelectorRow(LiftIcons.Banknote, viewModel.price.asPkr(), { priceSheet = true }, contentDescription = "Change price per seat")
             }
             Section(Modifier.entrance(3), label = "Add route") {
                 LiftTextField(viewModel.route, { viewModel.route = it }, "Enter your route here", Modifier.fillMaxWidth(), onImeAction = { focus.clearFocus() })
@@ -154,6 +160,7 @@ fun PublishRideRoute(
 
     if (datePicker) LiftDatePicker(viewModel.date, { viewModel.date = it }, { datePicker = false })
     if (timeSheet) TimeSheet(viewModel.time, { viewModel.time = it }, { timeSheet = false })
+    if (priceSheet) PriceSheet(viewModel.price, { viewModel.price = it }, { priceSheet = false })
     if (seatsSheet) SeatsSheet("How many seats are you offering?", viewModel.seats, { viewModel.changeSeats(it - viewModel.seats) }, { seatsSheet = false })
     if (viewModel.published) {
         LiftSheet(onDismiss = onClose) { dismiss ->

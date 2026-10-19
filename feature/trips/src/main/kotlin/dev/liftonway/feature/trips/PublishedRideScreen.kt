@@ -58,7 +58,9 @@ import dev.liftonway.core.designsystem.component.LiftTopBar
 import dev.liftonway.core.designsystem.component.MutedButton
 import dev.liftonway.core.designsystem.component.OutlineButton
 import dev.liftonway.core.designsystem.component.PrimaryButton
+import dev.liftonway.core.designsystem.component.RatingSheet
 import dev.liftonway.core.designsystem.component.RideCard
+import dev.liftonway.core.designsystem.component.Stars
 import dev.liftonway.core.designsystem.component.StatusBadge
 import dev.liftonway.core.designsystem.motion.entrance
 import dev.liftonway.core.designsystem.theme.LiftColors
@@ -86,6 +88,9 @@ class PublishedRideViewModel @AssistedInject constructor(@Assisted private val r
     var confirmingCancel by mutableStateOf(false)
     var cancelFailure by mutableStateOf<String?>(null)
         private set
+    val rating = RatingState()
+
+    fun rate(stars: Int) = viewModelScope.launch { submitRating(rides, rating, stars) }
 
     init {
         viewModelScope.launch { attempt { rides.refreshPublished() } }
@@ -177,6 +182,8 @@ fun PublishedRideRoute(rideId: String, onBack: () -> Unit) {
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
     }
 
+    RatePassenger(item, viewModel)
+
     if (viewModel.confirmingCancel) {
         LiftSheet(onDismiss = { if (viewModel.busy[PublishedRideViewModel.CANCEL] != true) viewModel.confirmingCancel = false }) { dismiss ->
             val confirmed = item?.passengers.orEmpty().count { it.confirmed }
@@ -195,6 +202,14 @@ fun PublishedRideRoute(rideId: String, onBack: () -> Unit) {
             )
         }
     }
+}
+
+@Composable
+private fun RatePassenger(item: PublishedRide?, viewModel: PublishedRideViewModel) {
+    val rating = viewModel.rating
+    val target = rating.target ?: return
+    val name = item?.passengers?.firstOrNull { it.bookingId == target }?.person?.name?.substringBefore(' ') ?: "your passenger"
+    RatingSheet("How was riding with $name?", rating.busy, rating.failure, rating.done, viewModel::rate, rating::close)
 }
 
 @Composable
@@ -231,7 +246,14 @@ private fun RideDetails(item: PublishedRide, viewModel: PublishedRideViewModel, 
             }
         } else {
             items(confirmed, key = { "c-" + it.bookingId }) { passenger ->
-                PassengerRow(passenger, Modifier.animateItem()) { StatusBadge("Confirmed", LiftColors.Green) }
+                PassengerRow(passenger, Modifier.animateItem()) {
+                    val stars = passenger.myRating
+                    when {
+                        stars != null -> Stars(stars)
+                        passenger.canRate -> PrimaryButton("Rate", { viewModel.rating.open(passenger.bookingId) }, Modifier.width(84.dp), height = 32.dp, color = LiftColors.Amber)
+                        item.status == TripStatus.Upcoming -> StatusBadge("Confirmed", LiftColors.Green)
+                    }
+                }
             }
         }
     }

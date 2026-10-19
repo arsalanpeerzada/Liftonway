@@ -32,9 +32,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.liftonway.core.designsystem.component.ConfirmSheetContent
 import dev.liftonway.core.designsystem.component.EmptyState
-import dev.liftonway.core.designsystem.component.LiftSheet
 import dev.liftonway.core.designsystem.component.LiftTopBar
 import dev.liftonway.core.designsystem.component.OutlineButton
 import dev.liftonway.core.designsystem.component.PrimaryButton
@@ -43,7 +41,6 @@ import dev.liftonway.core.designsystem.component.SegmentedTabs
 import dev.liftonway.core.designsystem.component.StatusBadge
 import dev.liftonway.core.designsystem.motion.entrance
 import dev.liftonway.core.designsystem.theme.LiftColors
-import dev.liftonway.core.model.Policy
 import dev.liftonway.core.model.TripStatus
 import kotlinx.coroutines.launch
 
@@ -66,7 +63,7 @@ fun MyTripsRoute(onBack: () -> Unit, onRequested: () -> Unit, onPublished: () ->
 }
 
 @Composable
-fun RequestedRidesRoute(onBack: () -> Unit, onBookRide: () -> Unit, viewModel: TripsViewModel = hiltViewModel()) {
+fun RequestedRidesRoute(onBack: () -> Unit, onBookRide: () -> Unit, onOpen: (String) -> Unit, viewModel: TripsViewModel = hiltViewModel()) {
     val groups by viewModel.bookings.collectAsStateWithLifecycle()
     TabbedTrips("Requested rides", onBack) { status ->
         val list = groups[status].orEmpty()
@@ -78,42 +75,24 @@ fun RequestedRidesRoute(onBack: () -> Unit, onBookRide: () -> Unit, viewModel: T
         } else {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 10.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 itemsIndexed(list, key = { _, it -> it.id }) { i, booking ->
-                    val upcoming = status == TripStatus.Upcoming
                     RideCard(
                         booking.ride,
                         Modifier
                             .animateItem()
                             .entrance(i.coerceAtMost(4))
-                            .then(if (upcoming) Modifier.clickable(role = Role.Button, onClickLabel = "Manage request") { viewModel.askCancel(booking) } else Modifier),
-                        dateTrailing = if (upcoming) {
-                            { StatusBadge(if (booking.confirmed) "Confirmed" else "Pending", if (booking.confirmed) LiftColors.Green else LiftColors.Coral) }
-                        } else {
-                            null
+                            .clickable(role = Role.Button, onClickLabel = "See ride details") { onOpen(booking.id) },
+                        dateTrailing = when {
+                            status == TripStatus.Upcoming -> {
+                                { StatusBadge(bookingLabel(booking), bookingColor(booking)) }
+                            }
+                            booking.canRate -> {
+                                { StatusBadge("Rate", LiftColors.Amber) }
+                            }
+                            else -> null
                         },
                     )
                 }
             }
-        }
-    }
-
-    val booking = viewModel.cancelling
-    if (booking != null) {
-        val allowed = viewModel.canCancel(booking)
-        LiftSheet(onDismiss = viewModel::dismissCancel) { dismiss ->
-            ConfirmSheetContent(
-                title = "Are you sure you want to cancel?",
-                message = viewModel.cancelFailure ?: if (allowed) {
-                    "You can cancel until ${Policy.CancelCutoff.toHours()} hours before departure."
-                } else {
-                    "Ride can only be canceled before ${Policy.CancelCutoff.toHours()} hours."
-                },
-                primary = "Cancel",
-                onPrimary = { viewModel.confirmCancel(dismiss) },
-                secondary = "Go Back",
-                onSecondary = dismiss,
-                primaryEnabled = allowed,
-                primaryLoading = viewModel.cancelBusy,
-            )
         }
     }
 }

@@ -42,6 +42,9 @@ interface RideRepository {
 
     /** As the driver: mark a ride that has set off as done. */
     suspend fun completeRide(rideId: String)
+
+    /** After a completed ride: the passenger rates the driver, or the driver rates the passenger. */
+    suspend fun rate(bookingId: String, stars: Int)
     suspend fun refreshBookings()
     suspend fun refreshPublished()
 }

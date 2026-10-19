@@ -51,13 +51,34 @@ data class Ride(
 
 enum class TripStatus { Upcoming, Completed, Cancelled }
 
-/** A seat request the user made on someone else's ride. */
+/**
+ * A seat request the user made on someone else's ride. [vehicle] has no plate until the seat is confirmed;
+ * [myRating] is what the user gave the driver after the trip.
+ */
 @Immutable
-data class Booking(val id: String, val ride: Ride, val seats: Int, val status: TripStatus, val confirmed: Boolean)
+data class Booking(
+    val id: String,
+    val ride: Ride,
+    val seats: Int,
+    val status: TripStatus,
+    val confirmed: Boolean,
+    val vehicle: Vehicle? = null,
+    val myRating: Int? = null,
+    val canRate: Boolean = false,
+) {
+    val total: Rupees get() = ride.pricePerSeat * seats
+}
 
 /** Someone holding or asking for a seat on the user's ride. */
 @Immutable
-data class Passenger(val bookingId: String, val person: Person, val seats: Int, val confirmed: Boolean)
+data class Passenger(
+    val bookingId: String,
+    val person: Person,
+    val seats: Int,
+    val confirmed: Boolean,
+    val myRating: Int? = null,
+    val canRate: Boolean = false,
+)
 
 /**
  * A ride the user published as the driver, with pending and confirmed passengers.
@@ -121,6 +142,7 @@ data class AppNotification(
     val actionable: Boolean = false,
     val outcome: String? = null,
     val bookingId: String? = null,
+    val rideId: String? = null,
     val read: Boolean = false,
 )
 

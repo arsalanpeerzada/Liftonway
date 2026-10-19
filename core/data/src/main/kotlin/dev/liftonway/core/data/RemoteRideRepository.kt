@@ -6,6 +6,7 @@ import dev.liftonway.core.data.remote.PakistanTime
 import dev.liftonway.core.data.remote.PlaceDto
 import dev.liftonway.core.data.remote.PublishBody
 import dev.liftonway.core.data.remote.PublishedRideDto
+import dev.liftonway.core.data.remote.RateBody
 import dev.liftonway.core.data.remote.RideDto
 import dev.liftonway.core.data.remote.SeatsBody
 import dev.liftonway.core.data.remote.toApiTime
@@ -138,6 +139,20 @@ class RemoteRideRepository @Inject constructor(private val api: LiftApi, private
             url("rides/$rideId/complete")
         }
         refreshPublished()
+    }
+
+    override suspend fun rate(bookingId: String, stars: Int) {
+        try {
+            api.exec {
+                method = HttpMethod.Post
+                url("bookings/$bookingId/rating")
+                setBody(RateBody(stars))
+            }
+        } catch (e: ApiError) {
+            if (e.code != "ALREADY_RATED") throw e
+        }
+        // The booking is either the user's own seat or a passenger on their ride.
+        if (_bookings.value.any { it.id == bookingId }) refreshBookings() else refreshPublished()
     }
 
     override suspend fun refreshBookings() {
