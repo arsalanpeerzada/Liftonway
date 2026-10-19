@@ -14,12 +14,17 @@ import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.request
+import io.ktor.client.request.setBody
+import io.ktor.client.request.url
+import io.ktor.http.HttpMethod
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import java.io.IOException
 import javax.inject.Inject
@@ -65,17 +70,63 @@ class LiftApi internal constructor(@PublishedApi internal val tokens: TokenSourc
     @PublishedApi
     internal suspend inline fun send(crossinline block: HttpRequestBuilder.() -> Unit): HttpResponse {
         val token = tokens.token()
-        val response = try {
-            client.request {
-                token?.let { bearerAuth(it) }
-                block()
-            }
-        } catch (e: IOException) {
-            throw ApiError(ApiError.OFFLINE, "Can't reach Lift On Way. Check your connection and try again.")
+        var response = execute(token) { block() }
+        if (response.status == HttpStatusCode.Unauthorized && token != null) {
+            // The access token ran out: renew it once and repeat the call.
+            val renewed = renew(failed = token) ?: throw ApiError(SIGNED_OUT, "Your session has ended. Please sign in again.")
+            response = execute(renewed) { block() }
+            if (response.status == HttpStatusCode.Unauthorized) tokens.expire()
         }
         if (response.status.isSuccess()) return response
-        if (response.status == HttpStatusCode.Unauthorized && token != null) tokens.expire()
         val problem = runCatching { response.body<Problem>() }.getOrNull()
         throw ApiError(problem?.code ?: ApiError.UNKNOWN, problem?.detail ?: "Something went wrong. Please try again.")
+    }
+
+    @PublishedApi
+    internal suspend inline fun execute(token: String?, crossinline block: HttpRequestBuilder.() -> Unit): HttpResponse = try {
+        client.request {
+            token?.let { bearerAuth(it) }
+            block()
+        }
+    } catch (e: IOException) {
+        throw ApiError(ApiError.OFFLINE, "Can't reach Lift On Way. Check your connection and try again.")
+    }
+
+    private val renewing = Mutex()
+
+    /**
+     * Trades the refresh token for a new pair. One renewal at a time: calls that failed together wait here and
+     * reuse the first renewal, because presenting the same refresh token twice would end the session.
+     * Null when the server ended the session (the user is signed out); offline and server errors are thrown.
+     */
+    @PublishedApi
+    internal suspend fun renew(failed: String): String? = renewing.withLock {
+        tokens.token()?.let { current -> if (current != failed) return current }
+        val refresh = tokens.refreshToken()
+        if (refresh == null) {
+            tokens.expire()
+            return null
+        }
+        val response = execute(token = null) {
+            method = HttpMethod.Post
+            url("auth/refresh")
+            setBody(RefreshBody(refresh))
+        }
+        when {
+            response.status.isSuccess() -> {
+                val renewed = response.body<RenewedDto>()
+                tokens.update(renewed.token, renewed.refreshToken)
+                renewed.token
+            }
+            response.status.value in 400..499 -> {
+                tokens.expire()
+                null
+            }
+            else -> throw ApiError(ApiError.UNKNOWN, "Something went wrong. Please try again.")
+        }
+    }
+
+    companion object {
+        const val SIGNED_OUT = "SIGNED_OUT"
     }
 }

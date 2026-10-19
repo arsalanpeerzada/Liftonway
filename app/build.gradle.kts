@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
@@ -18,14 +20,29 @@ android {
         versionName = "0.1.0-prototype"
     }
 
+    // The Play upload key comes from keystore.properties (never committed) or LIFTONWAY_* environment variables
+    // on a build server. Without one, release builds fall back to the debug key: they install for testing,
+    // and Play rejects them, so a debug-signed build can't be published by mistake.
+    val upload = uploadKey()
+    signingConfigs {
+        if (upload != null) {
+            create("upload") {
+                storeFile = rootProject.file(upload.getProperty("storeFile"))
+                storePassword = upload.getProperty("storePassword")
+                keyAlias = upload.getProperty("keyAlias")
+                keyPassword = upload.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
-            // Prototype only: signed with the debug key so release builds (and baseline profile runs) install.
-            // Replace with a real upload key before any Play release.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("upload") ?: signingConfigs.getByName("debug").also {
+                logger.warn("No upload key configured: release builds are signed with the debug key and can't go to Play.")
+            }
         }
     }
     compileOptions {
@@ -62,4 +79,18 @@ dependencies {
     // Installs the generated baseline profile so release builds start and scroll pre-compiled.
     implementation(libs.androidx.profileinstaller)
     baselineProfile(project(":baselineprofile"))
+}
+
+/** keystore.properties at the project root, or the same four values from the environment. */
+fun uploadKey(): Properties? {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) return Properties().apply { file.inputStream().use(::load) }
+    val env = mapOf(
+        "storeFile" to "LIFTONWAY_KEYSTORE_FILE",
+        "storePassword" to "LIFTONWAY_KEYSTORE_PASSWORD",
+        "keyAlias" to "LIFTONWAY_KEY_ALIAS",
+        "keyPassword" to "LIFTONWAY_KEY_PASSWORD",
+    ).mapValues { System.getenv(it.value) }
+    if (env.values.any { it.isNullOrBlank() }) return null
+    return Properties().apply { env.forEach { (k, v) -> setProperty(k, v) } }
 }

@@ -11,6 +11,8 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -25,12 +27,18 @@ import java.time.LocalDateTime
 
 /** The app's side of the API contract: JSON in, models out, and problems turned into messages. */
 class RemoteApiTest {
-    private class FakeTokens(var value: String? = "test-token") : TokenSource {
+    private class FakeTokens(var value: String? = "test-token", var refresh: String? = "refresh-1") : TokenSource {
         var expired = false
         override suspend fun token() = value
+        override suspend fun refreshToken() = refresh
+        override suspend fun update(access: String, refresh: String) {
+            value = access
+            this.refresh = refresh
+        }
         override suspend fun expire() {
             expired = true
             value = null
+            refresh = null
         }
     }
 
@@ -102,14 +110,57 @@ class RemoteApiTest {
     }
 
     @Test
-    fun `a rejected token signs the user out`() = runTest {
+    fun `an ended session signs the user out`() = runTest {
         val tokens = FakeTokens()
         try {
             rides(tokens) { _ -> respond("", HttpStatusCode.Unauthorized) }.refreshBookings()
             fail("Expected ApiError")
         } catch (e: ApiError) {
+            assertEquals(LiftApi.SIGNED_OUT, e.code)
             assertTrue(tokens.expired)
             assertNull(tokens.value)
+        }
+    }
+
+    @Test
+    fun `an expired access token is renewed once and the call repeated, even when calls fail together`() = runTest {
+        val tokens = FakeTokens(value = "old-access")
+        var refreshes = 0
+        val repository = rides(tokens) { request ->
+            when {
+                request.url.encodedPath.endsWith("auth/refresh") -> {
+                    refreshes++
+                    respond(
+                        """{"token":"new-access","expiresAt":"2026-10-19T05:15:00Z","refreshToken":"refresh-2","refreshExpiresAt":"2026-12-18T05:00:00Z"}""",
+                        HttpStatusCode.OK,
+                        json,
+                    )
+                }
+                request.headers[HttpHeaders.Authorization] == "Bearer new-access" -> respond("[]", HttpStatusCode.OK, json)
+                else -> respond("", HttpStatusCode.Unauthorized)
+            }
+        }
+        coroutineScope {
+            launch { repository.refreshBookings() }
+            launch { repository.refreshPublished() }
+        }
+        assertEquals(1, refreshes)
+        assertEquals("new-access", tokens.value)
+        assertEquals("refresh-2", tokens.refresh)
+        assertFalse(tokens.expired)
+    }
+
+    @Test
+    fun `a renewal that fails because the server is down keeps the user signed in`() = runTest {
+        val tokens = FakeTokens()
+        try {
+            rides(tokens) { request ->
+                if (request.url.encodedPath.endsWith("auth/refresh")) respond("", HttpStatusCode.ServiceUnavailable) else respond("", HttpStatusCode.Unauthorized)
+            }.refreshBookings()
+            fail("Expected ApiError")
+        } catch (e: ApiError) {
+            assertFalse(tokens.expired)
+            assertEquals("refresh-1", tokens.refresh)
         }
     }
 

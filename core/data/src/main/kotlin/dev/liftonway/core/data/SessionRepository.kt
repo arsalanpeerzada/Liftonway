@@ -85,7 +85,7 @@ class SessionRepository @Inject constructor(
     }
 
     private suspend fun saveSignedIn(signedIn: SignedIn, countryCode: String, phone: String, photoUri: String?) {
-        tokens.set(signedIn.token)
+        if (signedIn.token != null && signedIn.refreshToken != null) tokens.update(signedIn.token, signedIn.refreshToken) else tokens.clear()
         store.edit { prefs ->
             prefs[SessionKeys.name] = signedIn.name
             prefs[SessionKeys.countryCode] = countryCode
@@ -103,9 +103,18 @@ class SessionRepository @Inject constructor(
         }
     }
 
+    /** Signs out here at once, then tells the server; if that fails (say, offline) the session lapses on its own. */
     suspend fun signOut() {
-        tokens.set(null)
+        val refresh = tokens.refreshToken()
+        tokens.clear()
         store.edit { it[SessionKeys.signedIn] = false }
+        if (refresh != null) {
+            try {
+                auth.signOut(refresh)
+            } catch (_: ApiError) {
+                // Nothing to show: the user is already signed out on this device.
+            }
+        }
     }
 
     private fun Preferences.toSession(): Session {

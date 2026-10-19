@@ -1,6 +1,6 @@
-# Lift On Way (Android prototype)
+# Lift On Way (Android)
 
-A clickable prototype of the ride-sharing app, built from the design screenshots in the parent folder. All data is fake and in memory, except the session and profile, which are kept in DataStore. The backend will be a separate Spring Boot (Kotlin) project.
+The Lift On Way ride-sharing app, built from the design screenshots in the parent folder. It talks to the Spring Boot backend in `../../LiftOnWay-Backend`; a build flag swaps in an offline demo with in-memory data.
 
 ## Run it
 
@@ -14,14 +14,20 @@ For a true sense of smoothness, try a release build (`./gradlew assembleRelease`
 
 ## Backend
 
-By default the app talks to the Lift On Way API in `../../LiftOnWay-Backend`. Start it with `./gradlew bootRun` there, which needs Docker Desktop. The emulator reaches it at `http://10.0.2.2:8080/api/v1/`. Debug builds allow plain HTTP to that address only.
+By default debug builds talk to the Lift On Way API in `../../LiftOnWay-Backend`. Start it with `./gradlew bootRun` there (no Docker needed). The emulator reaches it at `http://10.0.2.2:8080/api/v1/`. Debug builds allow plain HTTP to that address only.
 
-- **Other server:** `-Pliftonway.apiUrl=https://...` points the app elsewhere.
+- **Other server (debug):** `-Pliftonway.apiUrl=https://...` points the app elsewhere.
+- **Release builds:** `-Pliftonway.releaseApiUrl=https://.../api/v1/` is the deployed API, and it must be HTTPS. Until a server exists the release default is a reserved, unreachable name, so a release build can never talk to a developer's machine.
 - **Offline demo:** `-Pliftonway.fake=true` builds the original demo with in-memory data and no backend.
 
-**What still uses in-memory data:** notifications and the wallet, which the API doesn't cover yet. The profile photo also stays on the device.
+**What still uses in-memory data:** the wallet and payments. The profile photo also stays on the device.
 
-**Token storage:** the API token is kept in the app's private DataStore. Encrypting it with the Android Keystore is a hardening step before release.
+**Sessions:**
+- The app holds a 15-minute access token and a refresh token, both encrypted with an AES key that never leaves the Android Keystore.
+- When the access token runs out, the API client renews it once, one renewal at a time, and repeats the call.
+- If the server has ended the session, the app returns to sign-in.
+- Sign-out also ends the session on the server.
+- Backups are off, and a session that can't be decrypted on a new device simply signs in again.
 
 **Prototype shortcuts:**
 - The local backend accepts the code `1234`, and so does the offline demo (it accepts any 4 digits).
@@ -52,8 +58,13 @@ Kotlin, Jetpack Compose (Material 3), Navigation 3, Hilt, Coil 3, DataStore and 
 
 - `core:model`: the 4-hour cancellation rule at its boundaries, and PKR and date formatting.
 - `core:data`: search window, stops staying in the right cities, recommendations, a request being confirmed, cancelling, top-up, paying with too little credit, and saved cards keeping only the last four digits. These use a fixed clock and virtual time.
-- `core:data` (`RemoteApiTest`): the app's side of the API contract, using Ktor's mock engine. It covers JSON to models in Pakistan time, problem messages, the cancel window, signing out on a rejected token, and the offline message.
-- `feature:trips`: a Compose UI test, run on the JVM with Robolectric, that the cancel sheet blocks a ride leaving soon and allows one tomorrow.
+- `core:data` (`RemoteApiTest`): the app's side of the API contract, using Ktor's mock engine. It covers:
+  - JSON to models in Pakistan time
+  - problem messages and the cancel window
+  - notifications and the driver's rides
+  - token renewal (once, even when calls fail together), and signing out when the session has ended but not when the server is merely down
+  - the offline message
+- `feature:trips`: Compose UI tests, run on the JVM with Robolectric, for ride details: the 4-hour rule, the number plate appearing once confirmed, and rating a completed ride.
 
 ## Baseline profile
 
@@ -63,13 +74,16 @@ The profile makes release builds start and scroll with pre-compiled code. With a
 ./gradlew :app:generateBaselineProfile
 ```
 
-This writes `app/src/release/generated/baselineProfiles/baseline-prof.txt`, which you should commit. The journeys sign up and search, so either run the backend first or add `-Pliftonway.fake=true`.
+This writes `app/src/release/generated/baselineProfiles/baseline-prof.txt`, which you should commit. The journeys sign up and search, and release-type builds point at the deployed API, so add `-Pliftonway.fake=true` unless a deployed server is set with `-Pliftonway.releaseApiUrl`.
 
 **Two traps on Windows:**
 - **Path length:** the profile is pulled back into a long path under `baselineprofile/build`. If it passes 260 characters, the copy fails without failing the build, and no file appears. Turning on Windows long-path support, or keeping the project in a shorter folder, avoids this.
 - **Emulator storage:** each run reinstalls and recompiles the app several times. Give the emulator at least 1 GB free, or installs fail part-way through.
 
-**Release signing:** release builds are signed with the debug key so they install for testing. Replace that with a real upload key before any Play release.
+**Release signing:**
+- Copy `keystore.properties.example` to `keystore.properties` (ignored by Git) and point it at your upload keystore. A build server can use the `LIFTONWAY_KEYSTORE_*` and `LIFTONWAY_KEY_*` environment variables instead.
+- Without a key, release builds fall back to the debug key and the build warns. Those builds install for testing, but Play rejects them.
+- Back up the upload keystore: Play App Signing can reset a lost upload key, but only through Google's support process.
 
 ## Animations
 

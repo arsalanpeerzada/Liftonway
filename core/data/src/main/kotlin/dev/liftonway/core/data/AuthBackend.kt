@@ -5,6 +5,7 @@ import dev.liftonway.core.data.remote.CodeVerify
 import dev.liftonway.core.data.remote.LiftApi
 import dev.liftonway.core.data.remote.MeDto
 import dev.liftonway.core.data.remote.NameBody
+import dev.liftonway.core.data.remote.RefreshBody
 import dev.liftonway.core.data.remote.SessionDto
 import io.ktor.client.request.setBody
 import io.ktor.client.request.url
@@ -13,8 +14,8 @@ import kotlinx.coroutines.delay
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Who signed in: the token for later calls (none in the offline demo) and the account's name. */
-data class SignedIn(val token: String?, val name: String)
+/** Who signed in: the tokens for later calls (none in the offline demo) and the account's name. */
+data class SignedIn(val token: String?, val refreshToken: String?, val name: String)
 
 /** The network half of signing in and managing the account. */
 interface AuthBackend {
@@ -25,6 +26,9 @@ interface AuthBackend {
     suspend fun sendChangeCode(countryCode: String, phone: String)
     suspend fun verifyChange(countryCode: String, phone: String, code: String)
     suspend fun rename(name: String)
+
+    /** Ends this device's session on the server. Best effort: the app signs out locally either way. */
+    suspend fun signOut(refreshToken: String)
 }
 
 @Singleton
@@ -47,7 +51,13 @@ class RemoteAuthBackend @Inject constructor(private val api: LiftApi) : AuthBack
             if (e.code == "NAME_REQUIRED") throw ApiError(e.code, "No account uses this number yet. Go back and sign up.")
             throw e
         }
-        return SignedIn(session.token, session.user.name)
+        return SignedIn(session.token, session.refreshToken, session.user.name)
+    }
+
+    override suspend fun signOut(refreshToken: String) = api.exec {
+        method = HttpMethod.Post
+        url("auth/logout")
+        setBody(RefreshBody(refreshToken))
     }
 
     override suspend fun sendChangeCode(countryCode: String, phone: String) = api.exec {
@@ -81,7 +91,7 @@ class FakeAuthBackend @Inject constructor() : AuthBackend {
     override suspend fun verify(countryCode: String, phone: String, code: String, name: String?): SignedIn {
         delay(900)
         checkCode(code)
-        return SignedIn(token = null, name = name ?: "Traveller")
+        return SignedIn(token = null, refreshToken = null, name = name ?: "Traveller")
     }
 
     override suspend fun sendChangeCode(countryCode: String, phone: String) = delay(700)
@@ -92,6 +102,8 @@ class FakeAuthBackend @Inject constructor() : AuthBackend {
     }
 
     override suspend fun rename(name: String) = delay(600)
+
+    override suspend fun signOut(refreshToken: String) = Unit
 
     private fun checkCode(code: String) {
         if (code.length != 4 || !code.all(Char::isDigit)) throw ApiError("INVALID_CODE", "That code didn't work.")

@@ -91,7 +91,20 @@ data class PublishedRideDto(
 data class MeDto(val id: String, val name: String, val phone: String, val photoUrl: String? = null, val rating: Double? = null, val hasVehicle: Boolean)
 
 @Serializable
-data class SessionDto(val token: String, val expiresAt: String, val created: Boolean, val user: MeDto)
+data class SessionDto(
+    val token: String,
+    val expiresAt: String,
+    val refreshToken: String,
+    val refreshExpiresAt: String,
+    val created: Boolean,
+    val user: MeDto,
+)
+
+@Serializable
+data class RefreshBody(val refreshToken: String)
+
+@Serializable
+data class RenewedDto(val token: String, val expiresAt: String, val refreshToken: String, val refreshExpiresAt: String)
 
 @Serializable
 data class VehicleDto(val name: String, val model: String, val plate: String, val colour: String, val airConditioning: Boolean, val heater: Boolean)
